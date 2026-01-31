@@ -88,21 +88,39 @@ def run_audit(file_bytes):
 
     # 4. Process ADP Data (Source of Truth)
     # Required Cols: ASSOCIATE ID, DEDUCTION CODE, DEDUCTION AMOUNT
+    # Optional but preferred for mapping: DEDUCTION DESCRIPTION
     adp_id_col = next((c for c in df_adp.columns if "associate" in c.lower() and "id" in c.lower()), None)
     adp_code_col = next((c for c in df_adp.columns if "deduction" in c.lower() and "code" in c.lower()), None)
     adp_amt_col = next((c for c in df_adp.columns if "amount" in c.lower() or "rate" in c.lower()), None)
+    adp_desc_col = next((c for c in df_adp.columns if "deduction" in c.lower() and "description" in c.lower()), None)
 
     if not all([adp_id_col, adp_code_col, adp_amt_col]):
-        return None, f"ADP Sheet missing required columns (Associate ID, Deduction Code, Amount). Found: {list(df_adp.columns)}"
+        return None, f"ADP Sheet missing required columns (Associate ID, Deduction Code, Deduction Amount). Found: {list(df_adp.columns)}", []
 
     adp_records = []
     for _, row in df_adp.iterrows():
         emp_id = str(row[adp_id_col]).strip()
         raw_code = str(row[adp_code_col]).strip()
+        raw_desc = str(row[adp_desc_col]).strip() if adp_desc_col else ""
         
-        # Map Code -> Uzio Name
-        # Try exact match, then lower case
-        deduction_name = mapping.get(raw_code, mapping.get(raw_code.lower(), f"UNKNOWN_CODE_{raw_code}")) 
+        # Map to Uzio Name
+        # PRIORITY 1: Map by Description (User Preference)
+        # PRIORITY 2: Map by Code
+        deduction_name = None
+        
+        # Try Description
+        if raw_desc:
+            deduction_name = mapping.get(raw_desc, mapping.get(raw_desc.lower()))
+            
+        # Try Code if Description failed
+        if not deduction_name and raw_code:
+            deduction_name = mapping.get(raw_code, mapping.get(raw_code.lower()))
+            
+        # If still unknown
+        if not deduction_name:
+            # Use Description for the label if available, else Code
+            label = raw_desc if raw_desc else raw_code
+            deduction_name = f"UNKNOWN_DED_{label}"
         
         amt = clean_money_val(row[adp_amt_col])
         
@@ -110,13 +128,14 @@ def run_audit(file_bytes):
             "Employee_ID": emp_id,
             "Deduction_Name": deduction_name,
             "ADP_Raw_Code": raw_code,
+            "ADP_Description": raw_desc,
             "ADP_Amount": amt,
             "Key": f"{emp_id}|{deduction_name}".lower()
         })
     
     df_adp_clean = pd.DataFrame(adp_records)
     # Aggregation: In case ADP has multiple lines for same deduction (rare but possible), sum them
-    df_adp_clean = df_adp_clean.groupby(["Employee_ID", "Deduction_Name", "ADP_Raw_Code", "Key"], as_index=False)["ADP_Amount"].sum()
+    df_adp_clean = df_adp_clean.groupby(["Employee_ID", "Deduction_Name", "ADP_Raw_Code", "ADP_Description", "Key"], as_index=False)["ADP_Amount"].sum()
 
 
     # 5. Process Uzio Data (Target)
@@ -158,7 +177,21 @@ def run_audit(file_bytes):
     uzio_emps = set(df_uz_clean["Uzio_Employee_ID"].unique())
 
     # Check for Unknown Codes (Debug/Warning for User)
-    unknown_codes = df_adp_clean[df_adp_clean["Deduction_Name"].str.startswith("UNKNOWN_CODE_")]["ADP_Raw_Code"].unique()
+    # Check for rows where Deduction_Name starts with UNKNOWN_DED_
+    unknown_mask = df_adp_clean["Deduction_Name"].str.startswith("UNKNOWN_DED_")
+    unknown_df = df_adp_clean[unknown_mask]
+    
+    # Collect unique descriptions (or codes if desc missing) that failed to map
+    unknown_items = set()
+    for _, row in unknown_df.iterrows():
+        desc = row["ADP_Description"]
+        code = row["ADP_Raw_Code"]
+        if desc and str(desc).strip() != "":
+            unknown_items.add(desc)
+        else:
+            unknown_items.add(code)
+            
+    unknown_codes = sorted(list(unknown_items))
 
     # Determine Status
     results = []
@@ -260,7 +293,7 @@ if uploaded_file:
                     st.success("Audit Completed Successfully!")
                     
                     if len(unknown_codes) > 0:
-                        st.warning(f"⚠️ **Warning**: The following ADP Deduction Codes were found in the ADP file but are missing from your Mapping Sheet. They have been labeled as 'UNKNOWN_CODE_...' in the report.\n\n" + ", ".join([f"`{c}`" for c in unknown_codes]))
+                        st.warning(f"⚠️ **Warning**: The following **ADP Deduction Descriptions** were found in the ADP file but are missing from your Mapping Sheet. They have been labeled as 'UNKNOWN_DED_...' in the report.\n\n" + ", ".join([f"`{c}`" for c in unknown_codes]))
                     
                     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                     st.download_button(
