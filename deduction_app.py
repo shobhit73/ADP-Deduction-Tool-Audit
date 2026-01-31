@@ -157,6 +157,9 @@ def run_audit(file_bytes):
     adp_emps = set(df_adp_clean["Employee_ID"].unique())
     uzio_emps = set(df_uz_clean["Uzio_Employee_ID"].unique())
 
+    # Check for Unknown Codes (Debug/Warning for User)
+    unknown_codes = df_adp_clean[df_adp_clean["Deduction_Name"].str.startswith("UNKNOWN_CODE_")]["ADP_Raw_Code"].unique()
+
     # Determine Status
     results = []
     for _, row in merged.iterrows():
@@ -225,7 +228,8 @@ def run_audit(file_bytes):
         # Detailed Data
         df_res.to_excel(writer, sheet_name="Audit Details", index=False)
     
-    return out_buffer.getvalue(), None
+    return out_buffer.getvalue(), None, unknown_codes
+
 
 
 # =========================================================
@@ -248,12 +252,16 @@ if uploaded_file:
     if st.button("Run Audit", type="primary"):
         with st.spinner("Processing..."):
             try:
-                report_data, error_msg = run_audit(uploaded_file.getvalue())
+                report_data, error_msg, unknown_codes = run_audit(uploaded_file.getvalue())
                 
                 if error_msg:
                     st.error(error_msg)
                 else:
                     st.success("Audit Completed Successfully!")
+                    
+                    if len(unknown_codes) > 0:
+                        st.warning(f"⚠️ **Warning**: The following ADP Deduction Codes were found in the ADP file but are missing from your Mapping Sheet. They have been labeled as 'UNKNOWN_CODE_...' in the report.\n\n" + ", ".join([f"`{c}`" for c in unknown_codes]))
+                    
                     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                     st.download_button(
                         label="Download Audit Report",
