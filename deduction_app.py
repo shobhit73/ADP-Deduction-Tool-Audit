@@ -325,6 +325,7 @@ st.markdown("""
 """)
 
 uploaded_file = st.file_uploader("Upload Input File", type=["xlsx"])
+client_name = st.text_input("Enter Client Name (for Report Filename)", value="Client_Name")
 
 if uploaded_file:
     if st.button("Run Audit", type="primary"):
@@ -340,11 +341,16 @@ if uploaded_file:
                     if len(unknown_codes) > 0:
                         st.warning(f"⚠️ **Warning**: The following **ADP Deduction Descriptions** were found in the ADP file but are missing from your Mapping Sheet. They have been labeled as 'UNKNOWN_DED_...' in the report.\n\n" + ", ".join([f"`{c}`" for c in unknown_codes]))
                     
-                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    # Format: Client_Name_Deduction_Report_Jan-31-2026.xlsx
+                    today_str = datetime.now().strftime("%b-%d-%Y")
+                    # Clean client name to ensure valid filename (replace spaces with underscores)
+                    clean_client = "".join([c if c.isalnum() or c in (' ', '_', '-') else '' for c in client_name]).strip().replace(" ", "_")
+                    filename = f"{clean_client}_Deduction_Report_{today_str}.xlsx"
+                    
                     st.download_button(
                         label="Download Audit Report",
                         data=report_data,
-                        file_name=f"Deduction_Audit_Report_{timestamp}.xlsx",
+                        file_name=filename,
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     )
             except Exception as e:
