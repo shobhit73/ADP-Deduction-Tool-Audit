@@ -198,7 +198,20 @@ def run_audit(file_bytes):
     for _, row in merged.iterrows():
         # Clean up IDs and Names from either side
         emp_id = row["Employee_ID"] if pd.notna(row["Employee_ID"]) else row["Uzio_Employee_ID"]
-        ded_name = row["Deduction_Name"] if pd.notna(row["Deduction_Name"]) else row["Uzio_Deduction_Name"]
+        
+        # Resolve Deduction Names for Output Columns
+        # 1. ADP Deduction Description
+        if pd.notna(row["ADP_Amount"]): # ADP Record Exists
+            adp_final_name = row["ADP_Description"] if pd.notna(row["ADP_Description"]) and str(row["ADP_Description"]).strip() != "" else row["ADP_Raw_Code"]
+        else:
+            adp_final_name = "Not Available"
+            
+        # 2. Uzio Deduction Name
+        if pd.notna(row["Uzio_Amount"]): # Uzio Record Exists
+            uzio_final_name = row["Uzio_Deduction_Name"]
+        else:
+            uzio_final_name = "Not Available"
+
         raw_code = row["ADP_Raw_Code"] if pd.notna(row["ADP_Raw_Code"]) else ""
         
         adp_val = row["ADP_Amount"] if pd.notna(row["ADP_Amount"]) else 0.0
@@ -234,7 +247,8 @@ def run_audit(file_bytes):
         
         results.append({
             "Employee ID": emp_id,
-            "Deduction Name": ded_name,
+            "ADP Deduction Description": adp_final_name,
+            "Uzio Deduction Name": uzio_final_name,
             "ADP Code": raw_code,
             "ADP Amount": adp_val,
             "Uzio Amount": uz_val,
