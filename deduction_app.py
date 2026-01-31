@@ -12,7 +12,7 @@ from datetime import datetime
 #   3. Mapping Sheet
 # =========================================================
 
-APP_TITLE = "Deduction Audit Tool"
+APP_TITLE = "ADP to Uzio Deduction Audit Tool"
 
 def norm_col(c):
     """Normalize column names to be case-insensitive and stripped."""
