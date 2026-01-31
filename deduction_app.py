@@ -257,7 +257,34 @@ def run_audit(file_bytes):
 
     df_res = pd.DataFrame(results)
     
-    # 7. Generate Excel Output
+    # 7. Generate Field Summary by Status
+    # Create a consolidated "Field" column for grouping (prefer Uzio Name, fallback to ADP Desc)
+    df_res["Field"] = df_res.apply(lambda x: x["Uzio Deduction Name"] if x["Uzio Deduction Name"] != "Not Available" else x["ADP Deduction Description"], axis=1)
+    
+    # Pivot to get counts by Status
+    field_summary = df_res.groupby(["Field", "Status"]).size().unstack(fill_value=0)
+    
+    # Ensure all columns exist
+    expected_statuses = [
+        "Data Match", 
+        "Data Mismatch", 
+        "Value Missing in Uzio (ADP has Value)", 
+        "Value Missing in ADP (Uzio has Value)", 
+        "Employee Missing in Uzio", 
+        "Employee Missing in ADP"
+    ]
+    for col in expected_statuses:
+        if col not in field_summary.columns:
+            field_summary[col] = 0
+            
+    # Calculate Total
+    field_summary["Total"] = field_summary.sum(axis=1)
+    
+    # Reorder columns: Total first, then others
+    cols_order = ["Total"] + [c for c in expected_statuses if c in field_summary.columns] + [c for c in field_summary.columns if c not in expected_statuses and c != "Total"]
+    field_summary = field_summary[cols_order]
+    
+    # 8. Generate Excel Output
     out_buffer = io.BytesIO()
     with pd.ExcelWriter(out_buffer, engine='openpyxl') as writer:
         # Summary Sheet
@@ -272,7 +299,11 @@ def run_audit(file_bytes):
         }
         pd.DataFrame(summary_data).transpose().reset_index().rename(columns={"index": "Metric", 0: "Count"}).to_excel(writer, sheet_name="Summary", index=False)
         
+        # Field Summary Sheet
+        field_summary.to_excel(writer, sheet_name="field_summary_by_status")
+        
         # Detailed Data
+        df_res.drop(columns=["Field"], inplace=True) # Remove helper col
         df_res.to_excel(writer, sheet_name="Audit Details", index=False)
     
     return out_buffer.getvalue(), None, unknown_codes
