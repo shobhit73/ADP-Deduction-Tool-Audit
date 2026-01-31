@@ -153,6 +153,10 @@ def run_audit(file_bytes):
     # Merge on Key (Outer Join to find missing in both sides)
     merged = pd.merge(df_adp_clean, df_uz_clean, on="Key", how="outer", suffixes=('_ADP', '_UZIO'))
 
+    # Get Sets of Employees for "Employee Missing" checks
+    adp_emps = set(df_adp_clean["Employee_ID"].unique())
+    uzio_emps = set(df_uz_clean["Uzio_Employee_ID"].unique())
+
     # Determine Status
     results = []
     for _, row in merged.iterrows():
@@ -169,23 +173,28 @@ def run_audit(file_bytes):
         has_uzio = pd.notna(row["Uzio_Amount"])
         
         status = ""
-        diff = 0.0
         
-        if has_adp and not has_uzio:
-            status = "Missing in Uzio"
-            diff = adp_val
-        elif has_uzio and not has_adp:
-            status = "Missing in ADP"
-            diff = -uz_val
-        else:
+        if has_adp and has_uzio:
             # Both exist, compare amounts (tolerance 0.01)
             delta = abs(adp_val - uz_val)
             if delta < 0.01:
-                status = "Match"
-                diff = 0.0
+                status = "Data Match"
             else:
-                status = "Amount Mismatch"
-                diff = adp_val - uz_val
+                status = "Data Mismatch"
+        
+        elif has_adp and not has_uzio:
+            # Present in ADP, Missing in Uzio
+            if emp_id in uzio_emps:
+                status = "Value Missing in Uzio (ADP has Value)"
+            else:
+                status = "Employee Missing in Uzio"
+                
+        elif has_uzio and not has_adp:
+            # Present in Uzio, Missing in ADP
+            if emp_id in adp_emps:
+                status = "Value Missing in ADP (Uzio has Value)"
+            else:
+                status = "Employee Missing in ADP"
         
         results.append({
             "Employee ID": emp_id,
@@ -193,7 +202,6 @@ def run_audit(file_bytes):
             "ADP Code": raw_code,
             "ADP Amount": adp_val,
             "Uzio Amount": uz_val,
-            "Difference": diff,
             "Status": status
         })
 
@@ -205,10 +213,12 @@ def run_audit(file_bytes):
         # Summary Sheet
         summary_data = {
             "Total Records": [len(df_res)],
-            "Matches": [len(df_res[df_res["Status"] == "Match"])],
-            "Mismatches": [len(df_res[df_res["Status"] == "Amount Mismatch"])],
-            "Missing in Uzio": [len(df_res[df_res["Status"] == "Missing in Uzio"])],
-            "Missing in ADP": [len(df_res[df_res["Status"] == "Missing in ADP"])]
+            "Matches": [len(df_res[df_res["Status"] == "Data Match"])],
+            "Mismatches": [len(df_res[df_res["Status"] == "Data Mismatch"])],
+            "Value Missing in Uzio": [len(df_res[df_res["Status"] == "Value Missing in Uzio (ADP has Value)"])],
+            "Value Missing in ADP": [len(df_res[df_res["Status"] == "Value Missing in ADP (Uzio has Value)"])],
+            "Emp Missing in Uzio": [len(df_res[df_res["Status"] == "Employee Missing in Uzio"])],
+            "Emp Missing in ADP": [len(df_res[df_res["Status"] == "Employee Missing in ADP"])]
         }
         pd.DataFrame(summary_data).transpose().reset_index().rename(columns={"index": "Metric", 0: "Count"}).to_excel(writer, sheet_name="Summary", index=False)
         
