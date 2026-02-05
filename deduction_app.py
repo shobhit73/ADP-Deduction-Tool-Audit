@@ -18,16 +18,17 @@ def norm_col(c):
     return str(c).strip().replace("\n", " ").strip()
 
 def clean_money_val(x):
-    """Parse money/percentage strings to float."""
+    """Parse money/percentage strings to float. Returns original string if not a number."""
     if pd.isna(x) or x == "":
         return 0.0
     s = str(x).strip()
-    s = s.replace("$", "").replace("%", "").replace(",", "")
-    s = s.replace("(", "-").replace(")", "") # Handle accounting negative (100) -> -100
+    s_clean = s.replace("$", "").replace("%", "").replace(",", "")
+    s_clean = s_clean.replace("(", "-").replace(")", "") # Handle accounting negative
     try:
-        return float(s)
+        return float(s_clean)
     except:
-        return 0.0
+        # If it's not a number (like an SSN), return the string itself for comparison
+        return s
 
 def run_audit(file_bytes):
     # Load Workbook
@@ -434,10 +435,6 @@ def _run_prior_payroll_audit(df_uzio, df_adp, df_map):
         has_adp = pd.notna(row["ADP_Amount"])
         has_uzio = pd.notna(row["Uzio_Amount"])
         
-        # Name resolution
-        # For ADP side, we don't have a Description column in Wide format, just the Header (Raw Code) which mapped to the Name
-        adp_desc = row["ADP_Raw_Code"] if has_adp else "Not Available" # The Header name
-        
         # FIX: If Uzio value is missing, we still want to show what the ADP field *mapped to*
         if has_uzio:
             uz_name = row["Uzio_Deduction_Name"]
@@ -447,15 +444,32 @@ def _run_prior_payroll_audit(df_uzio, df_adp, df_map):
         else:
             uz_name = "Not Available"
         
-        # If match, both should be same (via mapping)
-        final_ded_name = row["Deduction_Name"] if pd.notna(row.get("Deduction_Name")) else row["Uzio_Deduction_Name"]
-        
+        # Name resolution continued
+        adp_desc = row["ADP_Raw_Code"] if has_adp else "Not Available"
+
+        # Comparison Logic with type safety
         status = ""
+        is_match = False
+        
+        # Check if values are numeric
+        is_adp_num = isinstance(adp_val, (int, float))
+        is_uz_num = isinstance(uz_val, (int, float))
+        
         if has_adp and has_uzio:
-            if abs(adp_val - uz_val) < 0.01:
+            if is_adp_num and is_uz_num:
+                # Numeric comparison
+                if abs(adp_val - uz_val) < 0.01:
+                    is_match = True
+            else:
+                # String comparison
+                if str(adp_val).strip() == str(uz_val).strip():
+                    is_match = True
+            
+            if is_match:
                 status = "Data Match"
             else:
                 status = "Data Mismatch"
+                
         elif has_adp and not has_uzio:
             if emp_id in uzio_all_emps:
                 status = "Value Missing in Uzio (ADP has Value)"
@@ -470,9 +484,8 @@ def _run_prior_payroll_audit(df_uzio, df_adp, df_map):
         results.append({
             "Employee ID": emp_id,
             "Pay Date": p_date,
-            "ADP field": adp_desc, # Header Name (renamed from ADP Deduction Description)
-            "Uzio field": uz_name, # Renamed from Uzio Deduction Name
-            # "ADP Code": "", # Removed as requested
+            "ADP field": adp_desc,
+            "Uzio field": uz_name,
             "ADP Amount": adp_val,
             "Uzio Amount": uz_val,
             "Status": status
