@@ -404,7 +404,15 @@ def _run_prior_payroll_audit(df_uzio, df_adp, df_map):
         # Name resolution
         # For ADP side, we don't have a Description column in Wide format, just the Header (Raw Code) which mapped to the Name
         adp_desc = row["ADP_Raw_Code"] if has_adp else "Not Available" # The Header name
-        uz_name = row["Uzio_Deduction_Name"] if has_uzio else "Not Available"
+        
+        # FIX: If Uzio value is missing, we still want to show what the ADP field *mapped to*
+        if has_uzio:
+            uz_name = row["Uzio_Deduction_Name"]
+        elif has_adp and pd.notna(row.get("Deduction_Name")):
+            # If we have ADP data, we know what it mapped to
+            uz_name = row["Deduction_Name"]
+        else:
+            uz_name = "Not Available"
         
         # If match, both should be same (via mapping)
         final_ded_name = row["Deduction_Name"] if pd.notna(row.get("Deduction_Name")) else row["Uzio_Deduction_Name"]
