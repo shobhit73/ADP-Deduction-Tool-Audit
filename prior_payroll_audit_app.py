@@ -5,10 +5,10 @@ import re
 from datetime import datetime
 
 # =========================================================
-# Deduction Audit Tool
+# ADP to Uzio Prior Payroll Audit Tool
 # INPUT: One Excel File with 3 Tabs:
 #   1. Uzio Data
-#   2. ADP Data
+#   2. ADP Data (Prior Payroll)
 #   3. Mapping Sheet
 # =========================================================
 
@@ -60,166 +60,7 @@ def run_audit(file_bytes):
     df_adp = pd.read_excel(xls, sheet_name=adp_sheet)
     df_map = pd.read_excel(xls, sheet_name=map_sheet)
 
-    # 3. Detect Audit Type based on ADP Columns
-    # Deduction Tool (Long Format) has "Deduction Amount" or "Rate"
-    # Prior Payroll (Wide Format) does NOT have a single amount column, but multiple deduction columns
-    is_legacy_deduction = False
-    
-    # Check for Long Format indicators
-    adp_amt_col = next((c for c in df_adp.columns if "amount" in c.lower() or "rate" in c.lower()), None)
-    adp_code_col = next((c for c in df_adp.columns if "deduction" in c.lower() and "code" in c.lower()), None)
-    
-    if adp_amt_col and adp_code_col:
-        is_legacy_deduction = True
-        
-    if is_legacy_deduction:
-        return _run_deduction_audit(df_uzio, df_adp, df_map)
-    else:
-        return _run_prior_payroll_audit(df_uzio, df_adp, df_map)
-
-def _run_deduction_audit(df_uzio, df_adp, df_map):
-    # Normalize Columns
-    df_uzio.columns = [norm_col(c) for c in df_uzio.columns]
-    df_adp.columns = [norm_col(c) for c in df_adp.columns]
-    df_map.columns = [norm_col(c) for c in df_map.columns]
-
-    # Process Mapping
-    map_adp_col = next((c for c in df_map.columns if "adp" in c.lower()), None)
-    map_uzio_col = next((c for c in df_map.columns if "uzio" in c.lower()), None)
-    
-    if not map_adp_col or not map_uzio_col:
-        return None, "Mapping Sheet must have columns identifying 'ADP' and 'Uzio' deductions.", []
-
-    mapping = {}
-    for _, row in df_map.iterrows():
-        k = str(row[map_adp_col]).strip()
-        v = str(row[map_uzio_col]).strip()
-        if k and v and k.lower() != 'nan' and v.lower() != 'nan':
-            mapping[k] = v
-            mapping[k.lower()] = v
-
-    # Required Cols
-    adp_id_col = next((c for c in df_adp.columns if "associate" in c.lower() and "id" in c.lower()), None)
-    adp_code_col = next((c for c in df_adp.columns if "deduction" in c.lower() and "code" in c.lower()), None)
-    adp_amt_col = next((c for c in df_adp.columns if "amount" in c.lower() or "rate" in c.lower()), None)
-    adp_desc_col = next((c for c in df_adp.columns if "deduction" in c.lower() and "description" in c.lower()), None)
-    adp_pct_col = next((c for c in df_adp.columns if "deduction" in c.lower() and "%" in c.lower()), None)
-
-    if not all([adp_id_col, adp_code_col, adp_amt_col]):
-        return None, f"ADP Sheet missing required columns (Associate ID, Deduction Code, Deduction Amount). Found: {list(df_adp.columns)}", []
-
-    adp_records = []
-    for _, row in df_adp.iterrows():
-        emp_id = str(row[adp_id_col]).strip()
-        raw_code = str(row[adp_code_col]).strip()
-        raw_desc = str(row[adp_desc_col]).strip() if adp_desc_col else ""
-        
-        deduction_name = None
-        if raw_desc:
-            deduction_name = mapping.get(raw_desc, mapping.get(raw_desc.lower()))
-        if not deduction_name and raw_code:
-            deduction_name = mapping.get(raw_code, mapping.get(raw_code.lower()))
-            
-        if not deduction_name:
-            continue
-        
-        amt = clean_money_val(row[adp_amt_col])
-        if amt == 0.0 and adp_pct_col:
-            pct_val = clean_money_val(row[adp_pct_col])
-            if pct_val != 0.0:
-                amt = pct_val
-        
-        adp_records.append({
-            "Employee_ID": emp_id,
-            "Deduction_Name": deduction_name,
-            "ADP_Raw_Code": raw_code,
-            "ADP_Description": raw_desc,
-            "ADP_Amount": amt,
-            "Key": f"{emp_id}|{deduction_name}".lower()
-        })
-    
-    df_adp_clean = pd.DataFrame(adp_records)
-    if not df_adp_clean.empty:
-        df_adp_clean = df_adp_clean.groupby(["Employee_ID", "Deduction_Name", "ADP_Raw_Code", "ADP_Description", "Key"], as_index=False)["ADP_Amount"].sum()
-    else:
-        df_adp_clean = pd.DataFrame(columns=["Employee_ID", "Deduction_Name", "ADP_Raw_Code", "ADP_Description", "Key", "ADP_Amount"])
-
-    # Process Uzio
-    uz_id_col = next((c for c in df_uzio.columns if "employee" in c.lower() and "id" in c.lower()), None)
-    uz_ded_col = next((c for c in df_uzio.columns if "deduction" in c.lower() and "name" in c.lower()), None)
-    uz_amt_col = next((c for c in df_uzio.columns if "amount" in c.lower() or "percent" in c.lower()), None)
-
-    if not all([uz_id_col, uz_ded_col, uz_amt_col]):
-        return None, f"Uzio Sheet missing required columns (Employee ID, Deduction Name, Amount/Percentage). Found: {list(df_uzio.columns)}", []
-
-    uzio_records = []
-    for _, row in df_uzio.iterrows():
-        emp_id = str(row[uz_id_col]).strip()
-        ded_name = str(row[uz_ded_col]).strip()
-        amt = clean_money_val(row[uz_amt_col])
-        
-        uzio_records.append({
-            "Uzio_Employee_ID": emp_id,
-            "Uzio_Deduction_Name": ded_name,
-            "Uzio_Amount": amt,
-            "Key": f"{emp_id}|{ded_name}".lower()
-        })
-    
-    df_uz_clean = pd.DataFrame(uzio_records)
-    if not df_uz_clean.empty:
-        df_uz_clean = df_uz_clean.groupby(["Uzio_Employee_ID", "Uzio_Deduction_Name", "Key"], as_index=False)["Uzio_Amount"].sum()
-    else:
-        df_uz_clean = pd.DataFrame(columns=["Uzio_Employee_ID", "Uzio_Deduction_Name", "Key", "Uzio_Amount"])
-
-    # Merge
-    merged = pd.merge(df_adp_clean, df_uz_clean, on="Key", how="outer", suffixes=('_ADP', '_UZIO'))
-    
-    # IDs lists
-    adp_emps = set(df_adp_clean["Employee_ID"].unique()) if not df_adp_clean.empty else set()
-    uzio_emps = set(df_uz_clean["Uzio_Employee_ID"].unique()) if not df_uz_clean.empty else set()
-    
-    results = []
-    for _, row in merged.iterrows():
-        emp_id = row["Employee_ID"] if pd.notna(row["Employee_ID"]) else row["Uzio_Employee_ID"]
-        
-        adp_final_name = row["ADP_Description"] if pd.notna(row["ADP_Amount"]) and pd.notna(row["ADP_Description"]) else (row["ADP_Raw_Code"] if pd.notna(row["ADP_Amount"]) else "Not Available")
-        uzio_final_name = row["Uzio_Deduction_Name"] if pd.notna(row["Uzio_Amount"]) else "Not Available"
-        
-        raw_code = row["ADP_Raw_Code"] if pd.notna(row["ADP_Raw_Code"]) else ""
-        adp_val = row["ADP_Amount"] if pd.notna(row["ADP_Amount"]) else 0.0
-        uz_val = row["Uzio_Amount"] if pd.notna(row["Uzio_Amount"]) else 0.0
-        
-        has_adp = pd.notna(row["ADP_Amount"])
-        has_uzio = pd.notna(row["Uzio_Amount"])
-        
-        status = ""
-        if has_adp and has_uzio:
-            if abs(adp_val - uz_val) < 0.01:
-                status = "Data Match"
-            else:
-                status = "Data Mismatch"
-        elif has_adp and not has_uzio:
-            if emp_id in uzio_emps:
-                status = "Value Missing in Uzio (ADP has Value)"
-            else:
-                status = "Employee Missing in Uzio"
-        elif has_uzio and not has_adp:
-            if emp_id in adp_emps:
-                status = "Value Missing in ADP (Uzio has Value)"
-            else:
-                status = "Employee Missing in ADP"
-        
-        results.append({
-            "Employee ID": emp_id,
-            "ADP Deduction Description": adp_final_name,
-            "Uzio Deduction Name": uzio_final_name,
-            "ADP Code": raw_code,
-            "ADP Amount": adp_val,
-            "Uzio Amount": uz_val,
-            "Status": status
-        })
-        
-    return _generate_output(results)
+    return _run_prior_payroll_audit(df_uzio, df_adp, df_map)
 
 def _run_prior_payroll_audit(df_uzio, df_adp, df_map):
     # Mapping
@@ -271,11 +112,6 @@ def _run_prior_payroll_audit(df_uzio, df_adp, df_map):
     # Identify Deduction Columns in ADP Data
     # They should match keys in 'mapping'
     # We iterate ALL cols and check if they are in mapping
-    # Identify Deduction Columns in ADP Data
-    # They should match keys in 'mapping'
-    # We iterate ALL cols and check if they are in mapping
-    # CRITICAL FIX: ADP Headers often have prefixes like "VOLUNTARY DEDUCTION : "
-    # We need to strip these to find the match in the mapping sheet.
     
     def clean_header(h):
         # Remove common prefixes found in ADP reports
@@ -330,7 +166,6 @@ def _run_prior_payroll_audit(df_uzio, df_adp, df_map):
         # 5. Reverse Check: Is this ADP column actually defined as a Uzio Column Name?
         # Sometimes user puts the same name in both.
         # (Optional, but helps if mapping is sparse)
-
 
     adp_records = []
     # Melt/Unpivot
@@ -498,29 +333,17 @@ def _run_prior_payroll_audit(df_uzio, df_adp, df_map):
             "Status": status
         })
         
-    # Return using shared generator
     return _generate_output(results)
 
 def _generate_output(results):
     df_res = pd.DataFrame(results)
     
-    # Consolidate Field (Deduction Name)
-    # Handle both column naming conventions (Deduction vs Prior Payroll)
+    # Consolidate Field logic for Prior Payroll
     def get_field_name(row):
-        # Prior Payroll logic
-        if "Uzio field" in row:
-            if row["Uzio field"] != "Not Available":
-                return row["Uzio field"]
-            return row["ADP field"] if "ADP field" in row else "Unknown"
+        if row["Uzio field"] != "Not Available":
+            return row["Uzio field"]
+        return row["ADP field"] if "ADP field" in row else "Unknown"
             
-        # Deduction Audit logic
-        uz_name = row.get("Uzio Deduction Name", "Not Available")
-        adp_name = row.get("ADP Deduction Description", "Not Available")
-        
-        if uz_name != "Not Available":
-            return uz_name
-        return adp_name
-
     df_res["Field"] = df_res.apply(get_field_name, axis=1)
 
     # Pivot Summary
@@ -561,75 +384,52 @@ def _generate_output(results):
         df_res.drop(columns=["Field"], inplace=True)
         df_res.to_excel(writer, sheet_name="Audit Details", index=False)
     
-    # Return Unknown Codes (empty list for prior payroll for now)
     return out_buffer.getvalue(), None, []
 
 
 # =========================================================
 # UI
 # =========================================================
-st.set_page_config(page_title="ADP Audit Tools", layout="wide")
 
-# Sidebar for Tool Selection
-with st.sidebar:
-    st.title("Navigation")
-    tool_option = st.radio("Select Tool", ["Deduction Audit", "Prior Payroll Audit"])
-    st.markdown("---")
-    st.markdown("**Instructions**:")
-    if tool_option == "Deduction Audit":
-        st.markdown("""
-        1. Upload **Deduction Input** File.
-        2. Must contain:
-           - `Uzio Data`
-           - `ADP Data`
-           - `Mapping Sheet`
-        """)
-    else:
-        st.markdown("""
-        1. Upload **Prior Payroll Input** File.
-        2. Must contain:
-           - `Uzio Data`
-           - `ADP Data` (Prior Payroll)
-           - `Mapping Sheet`
-        """)
+def render_ui():
+    st.title("ADP to Uzio Prior Payroll Audit Tool")
+    st.markdown("""
+    **Instructions**:
+    1. Upload **Prior Payroll Input** File.
+    2. Must contain:
+        - `Uzio Data`
+        - `ADP Data` (Prior Payroll)
+        - `Mapping Sheet`
+    """)
 
-# Dynamic Title and Config
-if tool_option == "Deduction Audit":
-    APP_TITLE = "ADP to Uzio Deduction Audit Tool"
-    report_suffix = "Deduction_Report"
-else:
-    APP_TITLE = "ADP to Uzio Prior Payroll Audit Tool"
-    report_suffix = "Prior_Payroll_Report"
+    uploaded_file = st.file_uploader("Upload Prior Payroll Input File", type=["xlsx"])
+    client_name = st.text_input("Enter Client Name (for Report Filename)", value="Client_Name")
 
-st.title(APP_TITLE)
-
-uploaded_file = st.file_uploader(f"Upload {tool_option} File", type=["xlsx"])
-client_name = st.text_input("Enter Client Name (for Report Filename)", value="Client_Name")
-
-if uploaded_file:
-    if st.button(f"Run {tool_option}", type="primary"):
-        with st.spinner("Processing..."):
-            try:
-                # Reuse the same logic as the structure is identical
-                report_data, error_msg, _ = run_audit(uploaded_file.getvalue())
-                
-                if error_msg:
-                    st.error(error_msg)
-                else:
-                    st.success("Audit Completed Successfully!")
+    if uploaded_file:
+        if st.button("Run Audit", type="primary"):
+            with st.spinner("Processing..."):
+                try:
+                    report_data, error_msg, _ = run_audit(uploaded_file.getvalue())
                     
-                    # Format: Client_Name_ReportType_Jan-31-2026.xlsx
-                    today_str = datetime.now().strftime("%b-%d-%Y")
-                    # Clean client name to ensure valid filename (replace spaces with underscores)
-                    clean_client = "".join([c if c.isalnum() or c in (' ', '_', '-') else '' for c in client_name]).strip().replace(" ", "_")
-                    filename = f"{clean_client}_{report_suffix}_{today_str}.xlsx"
-                    
-                    st.download_button(
-                        label="Download Audit Report",
-                        data=report_data,
-                        file_name=filename,
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    )
-            except Exception as e:
-                st.error(f"An unexpected error occurred: {e}")
-                st.exception(e)
+                    if error_msg:
+                        st.error(error_msg)
+                    else:
+                        st.success("Audit Completed Successfully!")
+                        
+                        today_str = datetime.now().strftime("%b-%d-%Y")
+                        clean_client = "".join([c if c.isalnum() or c in (' ', '_', '-') else '' for c in client_name]).strip().replace(" ", "_")
+                        filename = f"{clean_client}_Prior_Payroll_Report_{today_str}.xlsx"
+                        
+                        st.download_button(
+                            label="Download Audit Report",
+                            data=report_data,
+                            file_name=filename,
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        )
+                except Exception as e:
+                    st.error(f"An unexpected error occurred: {e}")
+                    st.exception(e)
+
+if __name__ == "__main__":
+    st.set_page_config(page_title="ADP Prior Payroll Audit", layout="wide")
+    render_ui()
