@@ -94,6 +94,8 @@ def run_audit(file_bytes):
     adp_amt_col = next((c for c in df_adp.columns if "amount" in c.lower() or "rate" in c.lower()), None)
     adp_desc_col = next((c for c in df_adp.columns if "deduction" in c.lower() and "description" in c.lower()), None)
 
+    adp_pct_col = next((c for c in df_adp.columns if "deduction" in c.lower() and "%" in c.lower()), None)
+
     if not all([adp_id_col, adp_code_col, adp_amt_col]):
         return None, f"ADP Sheet missing required columns (Associate ID, Deduction Code, Deduction Amount). Found: {list(df_adp.columns)}", []
 
@@ -123,6 +125,12 @@ def run_audit(file_bytes):
             deduction_name = f"UNKNOWN_DED_{label}"
         
         amt = clean_money_val(row[adp_amt_col])
+        
+        # FALLBACK: If Amount is 0/Blank, try to use "Deduction %"
+        if amt == 0.0 and adp_pct_col:
+            pct_val = clean_money_val(row[adp_pct_col])
+            if pct_val != 0.0:
+                amt = pct_val
         
         adp_records.append({
             "Employee_ID": emp_id,
