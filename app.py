@@ -97,6 +97,12 @@ st.markdown("""
         color: #3182ce;
     }
     
+    /* Sidebar Styling */
+    section[data-testid="stSidebar"] {
+        background-color: #f8f9fa;
+        border-right: 1px solid #e9ecef;
+    }
+    
     /* Animation */
     @keyframes fadeIn {
         from { opacity: 0; transform: translateY(10px); }
@@ -115,6 +121,9 @@ st.markdown("""
 if "messages" not in st.session_state:
     st.session_state.messages = [] # Start empty to trigger Hero View
 
+if "archived_chats" not in st.session_state:
+    st.session_state.archived_chats = []
+
 if "current_tool" not in st.session_state:
     st.session_state.current_tool = None
 
@@ -124,7 +133,20 @@ if "step" not in st.session_state:
 # =========================================================
 # Helper Functions
 # =========================================================
-def reset_chat():
+def archive_and_reset():
+    """Moves current chat to history and resets state"""
+    if st.session_state.messages:
+        # Create a summary name based on first user action or timestamp
+        summary = "New Chat"
+        for msg in st.session_state.messages:
+            if msg["role"] == "user":
+                summary = msg["content"][:30] + "..." if len(msg["content"]) > 30 else msg["content"]
+                break
+        
+        timestamp = datetime.datetime.now().strftime("%I:%M %p")
+        st.session_state.archived_chats.insert(0, {"time": timestamp, "summary": summary})
+    
+    # Reset
     st.session_state.messages = []
     st.session_state.current_tool = None
     st.session_state.step = "idle"
@@ -140,10 +162,9 @@ def handle_tool_selection(tool_name, tool_key):
     st.rerun()
 
 def handle_cancel():
-    st.session_state.step = "idle"
-    st.session_state.messages.append({"role": "user", "content": "Cancel"})
-    st.session_state.messages.append({"role": "assistant", "content": "Action cancelled."})
-    st.rerun()
+    """On cancel, just reset to home (archiving the attempt)"""
+    st.toast("Action cancelled. Returning to Home.")
+    archive_and_reset()
 
 def process_file(uploaded_file):
     tool_key = st.session_state.current_tool
@@ -199,7 +220,7 @@ def post_process_success(data, name):
 
 def process_text_input(txt):
     txt = txt.lower()
-    if txt in ["cancel", "back", "stop"]:
+    if txt in ["cancel", "back", "stop", "home"]:
         handle_cancel()
         return
 
@@ -214,15 +235,28 @@ def process_text_input(txt):
         st.rerun()
 
 # =========================================================
+# Sidebar History
+# =========================================================
+with st.sidebar:
+    st.title("History")
+    if st.button("➕ New Chat", use_container_width=True):
+        archive_and_reset()
+    
+    st.markdown("---")
+    
+    if st.session_state.archived_chats:
+        for chat in st.session_state.archived_chats:
+            st.caption(f"{chat['time']}")
+            st.markdown(f"**{chat['summary']}**")
+            st.markdown("---")
+    else:
+        st.caption("No recent history.")
+
+# =========================================================
 # Main UI Logic
 # =========================================================
 
-# 1. Reset Button (Floating Top Right)
-if st.session_state.messages:
-    if st.sidebar.button("🔄 Start Over"):
-        reset_chat()
-
-# 2. Hero View (Only when idle and empty)
+# 1. Hero View (Only when idle and empty)
 if not st.session_state.messages and st.session_state.step == "idle":
     st.markdown("""
         <div class="hero-container">
@@ -251,7 +285,7 @@ if not st.session_state.messages and st.session_state.step == "idle":
         with c5: 
             if st.button("📊 Paycom Census", use_container_width=True): handle_tool_selection("Paycom Census Audit", "Paycom Census Audit")
 
-# 3. Chat View (When history exists)
+# 2. Chat View (When history exists)
 else:
     for msg in st.session_state.messages:
         avatar_icon = "🤖" if msg["role"] == "assistant" else "👤"
@@ -267,7 +301,7 @@ else:
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     )
 
-# 4. Contextual Interface (Uploaders inside columns to center)
+# 3. Contextual Interface (Uploaders inside columns to center)
 if st.session_state.step == "waiting_for_upload":
     # Push content down a bit
     st.markdown("<br>", unsafe_allow_html=True)
@@ -284,7 +318,7 @@ if st.session_state.step == "waiting_for_upload":
         if uploaded_file:
             process_file(uploaded_file)
 
-# 5. Persistent Input
+# 4. Persistent Input
 st.markdown("<div style='height: 80px;'></div>", unsafe_allow_html=True) # Spacer
 user_input = st.chat_input("Start a new audit (e.g., 'Run Census Audit')...")
 if user_input:
