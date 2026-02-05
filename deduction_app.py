@@ -12,7 +12,7 @@ from datetime import datetime
 #   3. Mapping Sheet
 # =========================================================
 
-APP_TITLE = "ADP to Uzio Deduction Audit Tool"
+
 
 def norm_col(c):
     """Normalize column names to be case-insensitive and stripped."""
@@ -46,7 +46,7 @@ def run_audit(file_bytes):
         return None
 
     uzio_sheet = get_sheet(["uzio"])
-    adp_sheet = get_sheet(["adp"])
+    adp_sheet = get_sheet(["adp", "prior", "payroll"])
     map_sheet = get_sheet(["mapping", "map"])
 
     if not all([uzio_sheet, adp_sheet, map_sheet]):
@@ -309,32 +309,74 @@ def run_audit(file_bytes):
 # =========================================================
 # UI
 # =========================================================
-st.set_page_config(page_title=APP_TITLE, layout="wide")
-st.title(APP_TITLE)
-st.markdown("""
-**Instructions**:
-1. Upload a single Excel file (`.xlsx`).
-2. The file MUST contain 3 sheets:
-   - **Uzio Data**: Exported Deduciton Report.
-   - **ADP Data**: Voluntary Deduction Report.
-   - **Mapping Sheet**: Columns `ADP Deductions` and `Uzio Deductions`.
-""")
+# =========================================================
+# UI
+# =========================================================
+st.set_page_config(page_title="ADP Audit Tools", layout="wide")
 
-uploaded_file = st.file_uploader("Upload Input File", type=["xlsx"])
+# Sidebar for Tool Selection
+with st.sidebar:
+    st.title("Navigation")
+    tool_option = st.radio("Select Tool", ["Deduction Audit", "Prior Payroll Audit"])
+    st.markdown("---")
+    st.markdown("**Instructions**:")
+    if tool_option == "Deduction Audit":
+        st.markdown("""
+        1. Upload **Deduction Input** File.
+        2. Must contain:
+           - `Uzio Data`
+           - `ADP Data`
+           - `Mapping Sheet`
+        """)
+    else:
+        st.markdown("""
+        1. Upload **Prior Payroll Input** File.
+        2. Must contain:
+           - `Uzio Data`
+           - `ADP Data` (Prior Payroll)
+           - `Mapping Sheet`
+        """)
+
+# Dynamic Title and Config
+if tool_option == "Deduction Audit":
+    APP_TITLE = "ADP to Uzio Deduction Audit Tool"
+    report_suffix = "Deduction_Report"
+else:
+    APP_TITLE = "ADP to Uzio Prior Payroll Audit Tool"
+    report_suffix = "Prior_Payroll_Report"
+
+st.title(APP_TITLE)
+
+uploaded_file = st.file_uploader(f"Upload {tool_option} File", type=["xlsx"])
 client_name = st.text_input("Enter Client Name (for Report Filename)", value="Client_Name")
 
 if uploaded_file:
-    if st.button("Run Audit", type="primary"):
+    if st.button(f"Run {tool_option}", type="primary"):
         with st.spinner("Processing..."):
             try:
-                report_data, error_msg, unknown_codes = run_audit(uploaded_file.getvalue())
+                # Reuse the same logic as the structure is identical
+                report_data, error_msg, _ = run_audit(uploaded_file.getvalue())
                 
                 if error_msg:
                     st.error(error_msg)
                 else:
                     st.success("Audit Completed Successfully!")
                     
-                    # Format: Client_Name_Deduction_Report_Jan-31-2026.xlsx
+                    # Format: Client_Name_ReportType_Jan-31-2026.xlsx
+                    today_str = datetime.now().strftime("%b-%d-%Y")
+                    # Clean client name to ensure valid filename (replace spaces with underscores)
+                    clean_client = "".join([c if c.isalnum() or c in (' ', '_', '-') else '' for c in client_name]).strip().replace(" ", "_")
+                    filename = f"{clean_client}_{report_suffix}_{today_str}.xlsx"
+                    
+                    st.download_button(
+                        label="Download Audit Report",
+                        data=report_data,
+                        file_name=filename,
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
+            except Exception as e:
+                st.error(f"An unexpected error occurred: {e}")
+                st.exception(e)
                     today_str = datetime.now().strftime("%b-%d-%Y")
                     # Clean client name to ensure valid filename (replace spaces with underscores)
                     clean_client = "".join([c if c.isalnum() or c in (' ', '_', '-') else '' for c in client_name]).strip().replace(" ", "_")
