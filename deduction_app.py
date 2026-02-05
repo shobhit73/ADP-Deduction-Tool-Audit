@@ -303,7 +303,8 @@ def _run_prior_payroll_audit(df_uzio, df_adp, df_map):
         norm_mapping[clean_header(k).strip().lower()] = v
 
     for col in df_adp.columns:
-        norm_c = str(col).strip()
+        # Normalize: strip and collapse multiple spaces to single space
+        norm_c = " ".join(str(col).split())
         cleaned_c = clean_header(norm_c)
         
         # 1. Try Exact Match
