@@ -18,8 +18,8 @@ try:
 except ImportError:
     router = None
 
-# Set Page Config - WIDE LAYOUT for modern feel
-st.set_page_config(page_title="Audit Assistant", layout="wide", page_icon="🤖")
+# Set Page Config - WIDE LAYOUT for modern feel, collapse sidebar by default
+st.set_page_config(page_title="Uzio AI Audit", layout="wide", page_icon="🤖", initial_sidebar_state="collapsed")
 
 # =========================================================
 # Custom CSS for World Class UI
@@ -46,7 +46,7 @@ st.markdown("""
     /* 3. Hero Section Styling */
     .hero-container {
         text-align: center;
-        padding: 4rem 0;
+        padding: 2rem 0 4rem 0;
         animation: fadeIn 0.8s ease-in;
     }
     .hero-title {
@@ -54,13 +54,14 @@ st.markdown("""
         font-weight: 800;
         font-size: 3rem;
         color: #1a202c;
-        margin-bottom: 1rem;
+        margin-bottom: 0.5rem;
     }
     .hero-subtitle {
         font-family: 'Inter', sans-serif;
         font-size: 1.25rem;
         color: #718096;
         margin-bottom: 3rem;
+        font-weight: 500;
     }
     
     /* 4. Chat Input Styling - Fixed Bottom & Centered */
@@ -103,10 +104,9 @@ st.markdown("""
         color: #3182ce;
     }
     
-    /* Sidebar Styling */
-    section[data-testid="stSidebar"] {
-        background-color: #f8f9fa;
-        border-right: 1px solid #e9ecef;
+    /* Hide Sidebar completely if possible or just style it away */
+    [data-testid="stSidebar"] {
+        display: none;
     }
     
     /* Animation */
@@ -127,9 +127,6 @@ st.markdown("""
 if "messages" not in st.session_state:
     st.session_state.messages = [] # Start empty to trigger Hero View
 
-if "archived_chats" not in st.session_state:
-    st.session_state.archived_chats = []
-
 if "current_tool" not in st.session_state:
     st.session_state.current_tool = None
 
@@ -138,26 +135,13 @@ if "step" not in st.session_state:
 
 # Initialize Semantic Router (Lazy Load)
 if router and not router.initialized:
-    with st.spinner("Initializing AI Brain... (First run may take a moment)"):
+    with st.spinner("Initializing AI Brain..."):
         router.initialize()
 
 # =========================================================
 # Helper Functions
 # =========================================================
-def archive_and_reset():
-    """Moves current chat to history and resets state"""
-    if st.session_state.messages:
-        # Create a summary name based on first user action or timestamp
-        summary = "New Chat"
-        for msg in st.session_state.messages:
-            if msg["role"] == "user":
-                summary = msg["content"][:30] + "..." if len(msg["content"]) > 30 else msg["content"]
-                break
-        
-        timestamp = datetime.datetime.now().strftime("%I:%M %p")
-        st.session_state.archived_chats.insert(0, {"time": timestamp, "summary": summary})
-    
-    # Reset
+def reset_chat():
     st.session_state.messages = []
     st.session_state.current_tool = None
     st.session_state.step = "idle"
@@ -173,9 +157,9 @@ def handle_tool_selection(tool_name, tool_key):
     st.rerun()
 
 def handle_cancel():
-    """On cancel, just reset to home (archiving the attempt)"""
+    """On cancel, just reset to home"""
     st.toast("Action cancelled. Returning to Home.")
-    archive_and_reset()
+    reset_chat()
 
 def process_file(uploaded_file):
     tool_key = st.session_state.current_tool
@@ -262,23 +246,6 @@ def process_text_input(txt):
         st.session_state.messages.append({"role": "assistant", "content": "I wasn't sure what you meant. Try keywords like **'deduction'**, **'census'**, or **'prior payroll'**."})
         st.rerun()
 
-# =========================================================
-# Sidebar History
-# =========================================================
-with st.sidebar:
-    st.title("History")
-    if st.button("➕ New Chat", use_container_width=True):
-        archive_and_reset()
-    
-    st.markdown("---")
-    
-    if st.session_state.archived_chats:
-        for chat in st.session_state.archived_chats:
-            st.caption(f"{chat['time']}")
-            st.markdown(f"**{chat['summary']}**")
-            st.markdown("---")
-    else:
-        st.caption("No recent history.")
 
 # =========================================================
 # Main UI Logic
@@ -286,12 +253,21 @@ with st.sidebar:
 
 # 1. Hero View (Only when idle and empty)
 if not st.session_state.messages and st.session_state.step == "idle":
-    st.markdown("""
-        <div class="hero-container">
-            <div class="hero-title">🤖 Audit Assistant</div>
-            <div class="hero-subtitle">Reconcile your Uzio and ADP/Paycom data with precision.</div>
-        </div>
-    """, unsafe_allow_html=True)
+    
+    # Hero Container
+    with st.container():
+        # CENTER THE LOGO AND TITLE
+        # Use columns to effectively center the image since st.image defaults to left
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            st.image("UZIO-Website-Logo (1).png", width=200) # Adjust width as needed
+            
+        st.markdown("""
+            <div class="hero-container">
+                <div class="hero-title">AI Powered Audit Assistant</div>
+                <div class="hero-subtitle">Intelligent reconciliation for Uzio, ADP, and Paycom data.</div>
+            </div>
+        """, unsafe_allow_html=True)
     
     # Centered Button Grid
     c_l, c_main, c_r = st.columns([1, 2, 1])
@@ -315,6 +291,12 @@ if not st.session_state.messages and st.session_state.step == "idle":
 
 # 2. Chat View (When history exists)
 else:
+    # Small Top Bar for "Home" when in chat mode (since sidebar is gone)
+    c_home, _, _ = st.columns([1, 4, 1])
+    with c_home:
+        if st.button("🏠 Home", key="home_btn"):
+            handle_cancel()
+
     for msg in st.session_state.messages:
         avatar_icon = "🤖" if msg["role"] == "assistant" else "👤"
         with st.chat_message(msg["role"], avatar=avatar_icon):
@@ -329,12 +311,9 @@ else:
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     )
 
-# 3. Contextual Interface (Uploaders inside columns to center)
+# 3. Contextual Interface
 if st.session_state.step == "waiting_for_upload":
-    # Push content down a bit
     st.markdown("<br>", unsafe_allow_html=True)
-    
-    # Center the uploader
     c_l, c_main, c_r = st.columns([1, 2, 1])
     with c_main:
         with st.container():
@@ -347,7 +326,7 @@ if st.session_state.step == "waiting_for_upload":
             process_file(uploaded_file)
 
 # 4. Persistent Input
-st.markdown("<div style='height: 80px;'></div>", unsafe_allow_html=True) # Spacer
+st.markdown("<div style='height: 80px;'></div>", unsafe_allow_html=True) 
 user_input = st.chat_input("Start a new audit (e.g., 'Run Census Audit')...")
 if user_input:
     process_text_input(user_input)
