@@ -12,61 +12,83 @@ import census_audit_app
 import payment_emergency_audit_app
 import paycom_census_audit_app
 
-# Set Page Config
-st.set_page_config(page_title="Audit Assistant", layout="centered")
+# Set Page Config - WIDE LAYOUT for modern feel
+st.set_page_config(page_title="Audit Assistant", layout="wide")
 
 # =========================================================
-# Custom CSS for Chatbot Feel
+# Custom CSS for Chatbot Feel (ChatGPT Style)
 # =========================================================
 st.markdown("""
 <style>
-    /* Chat Container */
-    .stChatInput {
-        position: fixed;
-        bottom: 30px;
+    /* 1. Main Container: Center content with max-width */
+    .main .block-container {
+        max-width: 900px; /* Limit width like ChatGPT */
+        padding-top: 2rem;
+        padding-bottom: 5rem; /* Space for chat input */
+        margin: 0 auto;
     }
-    
-    /* Message Styling */
-    .stChatMessage {
-        border-radius: 12px;
-        margin-bottom: 10px;
-    }
-    
-    /* Header Styling */
+
+    /* 2. Header Styling */
     h1 {
-        color: #0d47a1;
+        color: #2d3748;
         text-align: center;
-        font-family: 'Segoe UI', sans-serif;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
         font-weight: 700;
-        margin-bottom: 30px;
+        margin-bottom: 40px;
     }
     
-    /* Suggestions Area */
-    .suggestion-container {
-        border: 1px solid #e0e0e0;
-        border-radius: 15px;
-        padding: 20px;
-        background-color: #ffffff;
-        margin-top: 20px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+    /* 3. Chat Message Styling */
+    .stChatMessage {
+        background-color: transparent;
+        border: none;
+        padding: 1rem 0;
+    }
+    .stChatMessage[data-testid="stChatMessageAvatarUser"] {
+        background-color: transparent;
     }
     
-    /* Button Chips */
+    /* 4. Chat Input Styling - Fixed Bottom & Centered */
+    div[data-testid="stChatInput"] {
+        position: fixed;
+        bottom: 2rem; /* Floating above bottom */
+        left: 50%;
+        transform: translateX(-50%);
+        max-width: 800px; /* Match standard reading width */
+        width: 100%;
+        padding-inline: 1rem;
+        z-index: 1000;
+    }
+    
+    /* Style the actual input box */
+    div[data-testid="stChatInput"] > div {
+        border-radius: 25px !important;
+        border: 1px solid #e2e8f0;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        background-color: white;
+    }
+    
+    /* 5. Suggestions Grid Styling */
     .stButton button {
-        border-radius: 20px;
-        background-color: #f0f7ff;
-        color: #1976d2;
-        border: 1px solid #1976d2;
-        font-weight: 600;
+        border-radius: 12px;
+        background-color: #f7fafc;
+        color: #4a5568;
+        border: 1px solid #e2e8f0;
+        font-weight: 500;
         transition: all 0.2s;
-        width: 100%; /* Full width within column */
+        width: 100%;
+        padding: 0.5rem 1rem;
     }
     .stButton button:hover {
-        background-color: #1976d2;
-        color: white;
-        transform: translateY(-2px);
-        box-shadow: 0 4px 8px rgba(25, 118, 210, 0.2);
+        background-color: #ebf8ff;
+        color: #2b6cb0;
+        border-color: #bee3f8;
+        transform: translateY(-1px);
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
     }
+
+    /* Hide default header/footer */
+    header, footer {visibility: hidden;}
+    
 </style>
 """, unsafe_allow_html=True)
 
@@ -90,7 +112,7 @@ if "step" not in st.session_state:
 
 def reset_chat():
     st.session_state.messages = [
-        {"role": "assistant", "content": "Chat cleared. Is there anything else I can help you with?"}
+        {"role": "assistant", "content": "Chat cleared. Ready for a new task."}
     ]
     st.session_state.current_tool = None
     st.session_state.step = "idle"
@@ -226,6 +248,7 @@ with col_reset:
 # 1. Render History
 for msg in st.session_state.messages:
     # Set avatar based on role
+    # Use standard avatars or emojis
     avatar_icon = "🤖" if msg["role"] == "assistant" else "👤"
     
     with st.chat_message(msg["role"], avatar=avatar_icon):
@@ -233,60 +256,74 @@ for msg in st.session_state.messages:
         
         # Render download buttons if present in message metadata
         if "downloads" in msg:
-            cols = st.columns(len(msg["downloads"]))
+            # Use smaller columns for buttons to look cleaner
+            cols = st.columns(len(msg["downloads"]) + 2) # padding columns
             for i, dl in enumerate(msg["downloads"]):
                 cols[i].download_button(
-                    label=dl["label"],
+                    label=f"📥 {dl['label']}",
                     data=dl["data"],
                     file_name=dl["name"],
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
 
 # 2. Dynamic Input Area (Contextual Widgets)
-# Note: chat_input is persistent below, this area is for additional widgets (Buttons, Uploaders)
-
+# This sits visually ABOVE the persistent chat input but below the messages
 if st.session_state.step == "idle":
     st.markdown("---")
-    st.markdown("##### Quick Actions")
+    st.caption("Quick Actions")
     
-    # Grid Layout for Buttons
+    # Grid Layout for Buttons - 3 columns, then 2 centered
     c1, c2, c3 = st.columns(3)
     with c1:
-        if st.button("💰 Deduction Audit"):
+        if st.button("💰 Deduction Audit", use_container_width=True):
             handle_tool_selection("Deduction Audit", "Deduction Audit")
     with c2:
-        if st.button("📅 Prior Payroll"):
+        if st.button("📅 Prior Payroll", use_container_width=True):
             handle_tool_selection("Prior Payroll Audit", "Prior Payroll Audit")
     with c3:
-        if st.button("👥 Census Audit"):
+        if st.button("👥 Census Audit", use_container_width=True):
             handle_tool_selection("Census Audit", "Census Audit")
     
     c4, c5, c6 = st.columns(3)
     with c4:
-        if st.button("💳 Payment & Emergency"):
-            handle_tool_selection("Payment & Emergency Audit", "Payment & Emergency Audit")
+        # Centering the bottom two by using offsets or just 2 cols
+        pass
+    
     with c5:
-        if st.button("📊 Paycom Audit"):
+        # Try a different layout for the last 2 to center them? 
+        # Actually standard grid is fine, let's just fill the next row
+        pass
+        
+    # Re-doing the 2nd row to look better
+    c_r2_1, c_r2_2, c_r2_3 = st.columns(3)
+    with c_r2_1:
+        if st.button("💳 Payment & Emergency", use_container_width=True):
+            handle_tool_selection("Payment & Emergency Audit", "Payment & Emergency Audit")
+    with c_r2_2:
+        if st.button("📊 Paycom Audit", use_container_width=True):
             handle_tool_selection("Paycom Census Audit", "Paycom Census Audit")
-    with c6:
-        pass 
+    # c_r2_3 is empty
 
 elif st.session_state.step == "waiting_for_upload":
-    # Show uploader only when triggered
-    uploaded_file = st.file_uploader(f"Upload file for {st.session_state.current_tool}", key="dynamic_uploader")
-    
-    col_back, col_dummy = st.columns([1, 5])
-    if col_back.button("🔙 Cancel"):
-        handle_cancel()
+    # Show uploader
+    with st.container():
+        st.info(f"Please upload the Excel file for **{st.session_state.current_tool}**")
+        uploaded_file = st.file_uploader("", type=["xlsx"], key="dynamic_uploader")
+        
+        if st.button("🔙 Cancel", key="cancel_upload"):
+            handle_cancel()
 
-    if uploaded_file:
-        process_file(uploaded_file)
+        if uploaded_file:
+            process_file(uploaded_file)
 
 elif st.session_state.step == "result":
-    if st.button("✨ Start New Audit"):
+    if st.button("✨ Start New Audit", type="primary"):
         reset_chat()
 
-# 3. Persistent Chat Input (Always Visible)
+# Spacer to ensure content doesn't get hidden behind fixed input
+st.markdown("<div style='height: 100px;'></div>", unsafe_allow_html=True)
+
+# 3. Persistent Chat Input (ChatGPT Style)
 user_input = st.chat_input("Type your request here (e.g. 'Run Census Audit')...")
 if user_input:
     process_text_input(user_input)
