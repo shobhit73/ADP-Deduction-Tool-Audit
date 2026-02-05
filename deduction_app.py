@@ -249,14 +249,44 @@ def _run_prior_payroll_audit(df_uzio, df_adp, df_map):
     # Identify Deduction Columns in ADP Data
     # They should match keys in 'mapping'
     # We iterate ALL cols and check if they are in mapping
-    adp_deduction_map = {} # ColName -> UzioName
+    # Identify Deduction Columns in ADP Data
+    # They should match keys in 'mapping'
+    # We iterate ALL cols and check if they are in mapping
+    # CRITICAL FIX: ADP Headers often have prefixes like "VOLUNTARY DEDUCTION : "
+    # We need to strip these to find the match in the mapping sheet.
+    
+    def clean_header(h):
+        # Remove common prefixes found in ADP reports
+        h = str(h).strip()
+        prefixes = [
+            "VOLUNTARY DEDUCTION : ", 
+            "ADDITIONAL HOURS : ", 
+            "ADDITIONAL EARNINGS : ", 
+            "DIRECT DEPOSIT : "
+        ]
+        for p in prefixes:
+            if h.upper().startswith(p):
+                return h[len(p):].strip()
+        return h
+
+    adp_deduction_map = {} # ColName -> UzioName (Mapping Value)
+    
     for col in df_adp.columns:
         norm_c = str(col).strip()
+        cleaned_c = clean_header(norm_c)
+        
+        # Try direct match
         if norm_c in mapping:
             adp_deduction_map[col] = mapping[norm_c]
         elif norm_c.lower() in mapping:
              adp_deduction_map[col] = mapping[norm_c.lower()]
-             
+        
+        # Try cleaned match (e.g. "DEN-DENTAL" from "VOLUNTARY DEDUCTION : DEN-DENTAL")
+        elif cleaned_c in mapping:
+            adp_deduction_map[col] = mapping[cleaned_c]
+        elif cleaned_c.lower() in mapping:
+            adp_deduction_map[col] = mapping[cleaned_c.lower()]
+
     adp_records = []
     # Melt/Unpivot
     for _, row in df_adp.iterrows():
