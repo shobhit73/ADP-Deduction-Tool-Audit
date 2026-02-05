@@ -377,9 +377,9 @@ def _run_prior_payroll_audit(df_uzio, df_adp, df_map):
         results.append({
             "Employee ID": emp_id,
             "Pay Date": p_date,
-            "ADP Deduction Description": adp_desc, # Header Name
-            "Uzio Deduction Name": uz_name,
-            "ADP Code": "", # Not applicable in wide? Or use Header?
+            "ADP field": adp_desc, # Header Name (renamed from ADP Deduction Description)
+            "Uzio field": uz_name, # Renamed from Uzio Deduction Name
+            # "ADP Code": "", # Removed as requested
             "ADP Amount": adp_val,
             "Uzio Amount": uz_val,
             "Status": status
@@ -392,7 +392,23 @@ def _generate_output(results):
     df_res = pd.DataFrame(results)
     
     # Consolidate Field (Deduction Name)
-    df_res["Field"] = df_res.apply(lambda x: x["Uzio Deduction Name"] if x["Uzio Deduction Name"] != "Not Available" else x["ADP Deduction Description"], axis=1)
+    # Handle both column naming conventions (Deduction vs Prior Payroll)
+    def get_field_name(row):
+        # Prior Payroll logic
+        if "Uzio field" in row:
+            if row["Uzio field"] != "Not Available":
+                return row["Uzio field"]
+            return row["ADP field"] if "ADP field" in row else "Unknown"
+            
+        # Deduction Audit logic
+        uz_name = row.get("Uzio Deduction Name", "Not Available")
+        adp_name = row.get("ADP Deduction Description", "Not Available")
+        
+        if uz_name != "Not Available":
+            return uz_name
+        return adp_name
+
+    df_res["Field"] = df_res.apply(get_field_name, axis=1)
 
     # Pivot Summary
     expected_statuses = [
