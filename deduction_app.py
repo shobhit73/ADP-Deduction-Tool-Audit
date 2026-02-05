@@ -12,8 +12,6 @@ from datetime import datetime
 #   3. Mapping Sheet
 # =========================================================
 
-
-
 def norm_col(c):
     """Normalize column names to be case-insensitive and stripped."""
     if c is None: return ""
@@ -54,46 +52,56 @@ def run_audit(file_bytes):
         if not uzio_sheet: missing.append("Uzio Data")
         if not adp_sheet: missing.append("ADP Data")
         if not map_sheet: missing.append("Mapping Sheet")
-        return None, f"Missing Tabs: {', '.join(missing)}"
+        return None, f"Missing Tabs: {', '.join(missing)}", []
 
     # 2. Read Data
     df_uzio = pd.read_excel(xls, sheet_name=uzio_sheet)
     df_adp = pd.read_excel(xls, sheet_name=adp_sheet)
     df_map = pd.read_excel(xls, sheet_name=map_sheet)
 
+    # 3. Detect Audit Type based on ADP Columns
+    # Deduction Tool (Long Format) has "Deduction Amount" or "Rate"
+    # Prior Payroll (Wide Format) does NOT have a single amount column, but multiple deduction columns
+    is_legacy_deduction = False
+    
+    # Check for Long Format indicators
+    adp_amt_col = next((c for c in df_adp.columns if "amount" in c.lower() or "rate" in c.lower()), None)
+    adp_code_col = next((c for c in df_adp.columns if "deduction" in c.lower() and "code" in c.lower()), None)
+    
+    if adp_amt_col and adp_code_col:
+        is_legacy_deduction = True
+        
+    if is_legacy_deduction:
+        return _run_deduction_audit(df_uzio, df_adp, df_map)
+    else:
+        return _run_prior_payroll_audit(df_uzio, df_adp, df_map)
+
+def _run_deduction_audit(df_uzio, df_adp, df_map):
     # Normalize Columns
     df_uzio.columns = [norm_col(c) for c in df_uzio.columns]
     df_adp.columns = [norm_col(c) for c in df_adp.columns]
     df_map.columns = [norm_col(c) for c in df_map.columns]
 
-    # 3. Process Mapping
-    # Expect columns like "ADP Deductions" and "Uzio Deductions"
-    # Find columns that look like "ADP ..." and "Uzio ..."
+    # Process Mapping
     map_adp_col = next((c for c in df_map.columns if "adp" in c.lower()), None)
     map_uzio_col = next((c for c in df_map.columns if "uzio" in c.lower()), None)
-
+    
     if not map_adp_col or not map_uzio_col:
-        return None, "Mapping Sheet must have columns identifying 'ADP' and 'Uzio' deductions."
+        return None, "Mapping Sheet must have columns identifying 'ADP' and 'Uzio' deductions.", []
 
-    # Create Dictionary: ADP_Code -> Uzio_Name
-    # We clean whitespace to be safe
     mapping = {}
     for _, row in df_map.iterrows():
         k = str(row[map_adp_col]).strip()
         v = str(row[map_uzio_col]).strip()
         if k and v and k.lower() != 'nan' and v.lower() != 'nan':
             mapping[k] = v
-            # Also handle case-insensitive match for robustness
             mapping[k.lower()] = v
 
-    # 4. Process ADP Data (Source of Truth)
-    # Required Cols: ASSOCIATE ID, DEDUCTION CODE, DEDUCTION AMOUNT
-    # Optional but preferred for mapping: DEDUCTION DESCRIPTION
+    # Required Cols
     adp_id_col = next((c for c in df_adp.columns if "associate" in c.lower() and "id" in c.lower()), None)
     adp_code_col = next((c for c in df_adp.columns if "deduction" in c.lower() and "code" in c.lower()), None)
     adp_amt_col = next((c for c in df_adp.columns if "amount" in c.lower() or "rate" in c.lower()), None)
     adp_desc_col = next((c for c in df_adp.columns if "deduction" in c.lower() and "description" in c.lower()), None)
-
     adp_pct_col = next((c for c in df_adp.columns if "deduction" in c.lower() and "%" in c.lower()), None)
 
     if not all([adp_id_col, adp_code_col, adp_amt_col]):
@@ -105,30 +113,16 @@ def run_audit(file_bytes):
         raw_code = str(row[adp_code_col]).strip()
         raw_desc = str(row[adp_desc_col]).strip() if adp_desc_col else ""
         
-        # Map to Uzio Name
-        # PRIORITY 1: Map by Description (User Preference)
-        # PRIORITY 2: Map by Code
         deduction_name = None
-        
-        # Try Description
         if raw_desc:
             deduction_name = mapping.get(raw_desc, mapping.get(raw_desc.lower()))
-            
-        # Try Code if Description failed
         if not deduction_name and raw_code:
             deduction_name = mapping.get(raw_code, mapping.get(raw_code.lower()))
             
-        # Try Code if Description failed
-        if not deduction_name and raw_code:
-            deduction_name = mapping.get(raw_code, mapping.get(raw_code.lower()))
-            
-        # If still unknown, SKIP this record as per requirement (only mapped items should appear)
         if not deduction_name:
             continue
         
         amt = clean_money_val(row[adp_amt_col])
-        
-        # FALLBACK: If Amount is 0/Blank, try to use "Deduction %"
         if amt == 0.0 and adp_pct_col:
             pct_val = clean_money_val(row[adp_pct_col])
             if pct_val != 0.0:
@@ -144,21 +138,18 @@ def run_audit(file_bytes):
         })
     
     df_adp_clean = pd.DataFrame(adp_records)
-    # Aggregation: In case ADP has multiple lines for same deduction (rare but possible), sum them
-    df_adp_clean = df_adp_clean.groupby(["Employee_ID", "Deduction_Name", "ADP_Raw_Code", "ADP_Description", "Key"], as_index=False)["ADP_Amount"].sum()
+    if not df_adp_clean.empty:
+        df_adp_clean = df_adp_clean.groupby(["Employee_ID", "Deduction_Name", "ADP_Raw_Code", "ADP_Description", "Key"], as_index=False)["ADP_Amount"].sum()
+    else:
+        df_adp_clean = pd.DataFrame(columns=["Employee_ID", "Deduction_Name", "ADP_Raw_Code", "ADP_Description", "Key", "ADP_Amount"])
 
-
-    # 5. Process Uzio Data (Target)
-    # Required Cols: Employee ID, Deduction Name, Amount/Percentage
+    # Process Uzio
     uz_id_col = next((c for c in df_uzio.columns if "employee" in c.lower() and "id" in c.lower()), None)
     uz_ded_col = next((c for c in df_uzio.columns if "deduction" in c.lower() and "name" in c.lower()), None)
-    
-    # For Amount, look for "Amount", "Percentage", "Rate"
-    # The sample file had "Amount/Percentage"
     uz_amt_col = next((c for c in df_uzio.columns if "amount" in c.lower() or "percent" in c.lower()), None)
 
     if not all([uz_id_col, uz_ded_col, uz_amt_col]):
-        return None, f"Uzio Sheet missing required columns (Employee ID, Deduction Name, Amount/Percentage). Found: {list(df_uzio.columns)}"
+        return None, f"Uzio Sheet missing required columns (Employee ID, Deduction Name, Amount/Percentage). Found: {list(df_uzio.columns)}", []
 
     uzio_records = []
     for _, row in df_uzio.iterrows():
@@ -170,72 +161,48 @@ def run_audit(file_bytes):
             "Uzio_Employee_ID": emp_id,
             "Uzio_Deduction_Name": ded_name,
             "Uzio_Amount": amt,
-            "Key": f"{emp_id}|{ded_name}".lower() # Normalize key for matching
+            "Key": f"{emp_id}|{ded_name}".lower()
         })
     
     df_uz_clean = pd.DataFrame(uzio_records)
-    # Aggregation: Sum duplicate rows if any exist
-    df_uz_clean = df_uz_clean.groupby(["Uzio_Employee_ID", "Uzio_Deduction_Name", "Key"], as_index=False)["Uzio_Amount"].sum()
+    if not df_uz_clean.empty:
+        df_uz_clean = df_uz_clean.groupby(["Uzio_Employee_ID", "Uzio_Deduction_Name", "Key"], as_index=False)["Uzio_Amount"].sum()
+    else:
+        df_uz_clean = pd.DataFrame(columns=["Uzio_Employee_ID", "Uzio_Deduction_Name", "Key", "Uzio_Amount"])
 
-
-    # 6. Comparison
-    # Merge on Key (Outer Join to find missing in both sides)
+    # Merge
     merged = pd.merge(df_adp_clean, df_uz_clean, on="Key", how="outer", suffixes=('_ADP', '_UZIO'))
-
-    # Get Sets of Employees for "Employee Missing" checks
-    adp_emps = set(df_adp_clean["Employee_ID"].unique())
-    uzio_emps = set(df_uz_clean["Uzio_Employee_ID"].unique())
-
-    # Check for Unknown Codes (Debug/Warning for User)
-    unknown_codes = [] # Empty list as we are skipping them now
-
-    # Determine Status
+    
+    # IDs lists
+    adp_emps = set(df_adp_clean["Employee_ID"].unique()) if not df_adp_clean.empty else set()
+    uzio_emps = set(df_uz_clean["Uzio_Employee_ID"].unique()) if not df_uz_clean.empty else set()
+    
     results = []
     for _, row in merged.iterrows():
-        # Clean up IDs and Names from either side
         emp_id = row["Employee_ID"] if pd.notna(row["Employee_ID"]) else row["Uzio_Employee_ID"]
         
-        # Resolve Deduction Names for Output Columns
-        # 1. ADP Deduction Description
-        if pd.notna(row["ADP_Amount"]): # ADP Record Exists
-            adp_final_name = row["ADP_Description"] if pd.notna(row["ADP_Description"]) and str(row["ADP_Description"]).strip() != "" else row["ADP_Raw_Code"]
-        else:
-            adp_final_name = "Not Available"
-            
-        # 2. Uzio Deduction Name
-        if pd.notna(row["Uzio_Amount"]): # Uzio Record Exists
-            uzio_final_name = row["Uzio_Deduction_Name"]
-        else:
-            uzio_final_name = "Not Available"
-
-        raw_code = row["ADP_Raw_Code"] if pd.notna(row["ADP_Raw_Code"]) else ""
+        adp_final_name = row["ADP_Description"] if pd.notna(row["ADP_Amount"]) and pd.notna(row["ADP_Description"]) else (row["ADP_Raw_Code"] if pd.notna(row["ADP_Amount"]) else "Not Available")
+        uzio_final_name = row["Uzio_Deduction_Name"] if pd.notna(row["Uzio_Amount"]) else "Not Available"
         
+        raw_code = row["ADP_Raw_Code"] if pd.notna(row["ADP_Raw_Code"]) else ""
         adp_val = row["ADP_Amount"] if pd.notna(row["ADP_Amount"]) else 0.0
         uz_val = row["Uzio_Amount"] if pd.notna(row["Uzio_Amount"]) else 0.0
         
-        # Check Existence
         has_adp = pd.notna(row["ADP_Amount"])
         has_uzio = pd.notna(row["Uzio_Amount"])
         
         status = ""
-        
         if has_adp and has_uzio:
-            # Both exist, compare amounts (tolerance 0.01)
-            delta = abs(adp_val - uz_val)
-            if delta < 0.01:
+            if abs(adp_val - uz_val) < 0.01:
                 status = "Data Match"
             else:
                 status = "Data Mismatch"
-        
         elif has_adp and not has_uzio:
-            # Present in ADP, Missing in Uzio
             if emp_id in uzio_emps:
                 status = "Value Missing in Uzio (ADP has Value)"
             else:
                 status = "Employee Missing in Uzio"
-                
         elif has_uzio and not has_adp:
-            # Present in Uzio, Missing in ADP
             if emp_id in adp_emps:
                 status = "Value Missing in ADP (Uzio has Value)"
             else:
@@ -250,65 +217,225 @@ def run_audit(file_bytes):
             "Uzio Amount": uz_val,
             "Status": status
         })
+        
+    return _generate_output(results)
 
+def _run_prior_payroll_audit(df_uzio, df_adp, df_map):
+    # Mapping
+    map_adp_col = next((c for c in df_map.columns if "adp" in c.lower()), None)
+    map_uzio_col = next((c for c in df_map.columns if "uzio" in c.lower()), None)
+    
+    if not map_adp_col or not map_uzio_col:
+        return None, "Mapping Sheet must have columns identifying 'ADP' and 'Uzio' deductions.", []
+
+    # Map: ADP Header -> Uzio Header
+    # Normalize input mapping keys to match headers we find
+    mapping = {}
+    for _, row in df_map.iterrows():
+        k = str(row[map_adp_col]).strip()
+        v = str(row[map_uzio_col]).strip()
+        if k and v and k.lower() != 'nan' and v.lower() != 'nan':
+            mapping[k] = v
+            # Also precise match for ADP columns might be needed, so keep original and normalized
+            mapping[k.lower()] = v
+
+    # --- PROCESS ADP (WIDE) ---
+    adp_id_col = next((c for c in df_adp.columns if "associate" in c.lower() and "id" in c.lower()), None)
+    adp_date_col = next((c for c in df_adp.columns if "pay" in c.lower() and "date" in c.lower()), None)
+    
+    if not adp_id_col or not adp_date_col:
+        return None, f"ADP Sheet missing required columns (Associate ID, Pay Date). Found: {list(df_adp.columns)}", []
+
+    # Identify Deduction Columns in ADP Data
+    # They should match keys in 'mapping'
+    # We iterate ALL cols and check if they are in mapping
+    adp_deduction_map = {} # ColName -> UzioName
+    for col in df_adp.columns:
+        norm_c = str(col).strip()
+        if norm_c in mapping:
+            adp_deduction_map[col] = mapping[norm_c]
+        elif norm_c.lower() in mapping:
+             adp_deduction_map[col] = mapping[norm_c.lower()]
+             
+    adp_records = []
+    # Melt/Unpivot
+    for _, row in df_adp.iterrows():
+        emp_id = str(row[adp_id_col]).strip()
+        # Normalize Date
+        try:
+            p_date = pd.to_datetime(row[adp_date_col]).strftime("%Y-%m-%d")
+        except:
+            p_date = str(row[adp_date_col])
+            
+        for d_col, uz_name in adp_deduction_map.items():
+            val = clean_money_val(row[d_col])
+            if val != 0:
+                adp_records.append({
+                    "Employee_ID": emp_id,
+                    "Pay_Date": p_date,
+                    "Deduction_Name": uz_name, # Map to Common Name
+                    "ADP_Raw_Code": d_col, # Use Header as code
+                    "ADP_Amount": val,
+                    "Key": f"{emp_id}|{p_date}|{uz_name}".lower()
+                })
+                
+    df_adp_clean = pd.DataFrame(adp_records)
+    if not df_adp_clean.empty:
+         df_adp_clean = df_adp_clean.groupby(["Employee_ID", "Pay_Date", "Deduction_Name", "Key"], as_index=False)["ADP_Amount"].sum() # Sum handling duplicates
+    else:
+         df_adp_clean = pd.DataFrame(columns=["Employee_ID", "Pay_Date", "Deduction_Name", "Key", "ADP_Amount"])
+
+    # --- PROCESS UZIO (WIDE) ---
+    uz_id_col = next((c for c in df_uzio.columns if "employee" in c.lower() and "id" in c.lower()), None)
+    uz_date_col = next((c for c in df_uzio.columns if "pay" in c.lower() and "date" in c.lower()), None)
+    
+    if not uz_id_col or not uz_date_col:
+        return None, f"Uzio Sheet missing required columns (Employee ID, Pay Date). Found: {list(df_uzio.columns)}", []
+
+    # Identify Deduction Columns in Uzio Data
+    # We should look for columns in Uzio data that match the VALUES in the mapping dictionary
+    valid_uzio_names = set(mapping.values())
+    uzio_cols_found = []
+    for col in df_uzio.columns:
+        norm_c = str(col).strip()
+        if norm_c in valid_uzio_names:
+            uzio_cols_found.append(col)
+            
+    uzio_records = []
+    for _, row in df_uzio.iterrows():
+        emp_id = str(row[uz_id_col]).strip()
+        try:
+            p_date = pd.to_datetime(row[uz_date_col]).strftime("%Y-%m-%d")
+        except:
+             p_date = str(row[uz_date_col])
+             
+        for col in uzio_cols_found:
+            val = clean_money_val(row[col])
+            if val != 0:
+                uzio_records.append({
+                    "Uzio_Employee_ID": emp_id,
+                    "Pay_Date": p_date,
+                    "Uzio_Deduction_Name": col, # The header is the name
+                    "Uzio_Amount": val,
+                    "Key": f"{emp_id}|{p_date}|{col}".lower()
+                })
+
+    df_uz_clean = pd.DataFrame(uzio_records)
+    if not df_uz_clean.empty:
+        df_uz_clean = df_uz_clean.groupby(["Uzio_Employee_ID", "Pay_Date", "Uzio_Deduction_Name", "Key"], as_index=False)["Uzio_Amount"].sum()
+    else:
+        df_uz_clean = pd.DataFrame(columns=["Uzio_Employee_ID", "Pay_Date", "Uzio_Deduction_Name", "Key", "Uzio_Amount"])
+
+    # --- COMPARISON ---
+    merged = pd.merge(df_adp_clean, df_uz_clean, on="Key", how="outer", suffixes=('_ADP', '_UZIO'))
+    
+    # ID Sets for Missing Check (Needs ID + Date context?)
+    uzio_all_emps = set(df_uzio[uz_id_col].astype(str).str.strip().unique())
+    adp_all_emps = set(df_adp[adp_id_col].astype(str).str.strip().unique())
+    
+    results = []
+    for _, row in merged.iterrows():
+        # Recover ID and Date from available side
+        if pd.notna(row.get("Employee_ID")):
+            emp_id = row["Employee_ID"]
+            p_date = row["Pay_Date_ADP"] if "Pay_Date_ADP" in row else row["Pay_Date"]
+        else:
+            emp_id = row["Uzio_Employee_ID"]
+            p_date = row["Pay_Date_UZIO"] if "Pay_Date_UZIO" in row else row["Pay_Date"]
+
+        adp_val = row["ADP_Amount"] if pd.notna(row["ADP_Amount"]) else 0.0
+        uz_val = row["Uzio_Amount"] if pd.notna(row["Uzio_Amount"]) else 0.0
+        
+        has_adp = pd.notna(row["ADP_Amount"])
+        has_uzio = pd.notna(row["Uzio_Amount"])
+        
+        # Name resolution
+        # For ADP side, we don't have a Description column in Wide format, just the Header (Raw Code) which mapped to the Name
+        adp_desc = row["ADP_Raw_Code"] if has_adp else "Not Available" # The Header name
+        uz_name = row["Uzio_Deduction_Name"] if has_uzio else "Not Available"
+        
+        # If match, both should be same (via mapping)
+        final_ded_name = row["Deduction_Name"] if pd.notna(row.get("Deduction_Name")) else row["Uzio_Deduction_Name"]
+        
+        status = ""
+        if has_adp and has_uzio:
+            if abs(adp_val - uz_val) < 0.01:
+                status = "Data Match"
+            else:
+                status = "Data Mismatch"
+        elif has_adp and not has_uzio:
+            if emp_id in uzio_all_emps:
+                status = "Value Missing in Uzio (ADP has Value)"
+            else:
+                status = "Employee Missing in Uzio"
+        elif has_uzio and not has_adp:
+            if emp_id in adp_all_emps:
+                status = "Value Missing in ADP (Uzio has Value)"
+            else:
+                status = "Employee Missing in ADP"
+
+        results.append({
+            "Employee ID": emp_id,
+            "Pay Date": p_date,
+            "ADP Deduction Description": adp_desc, # Header Name
+            "Uzio Deduction Name": uz_name,
+            "ADP Code": "", # Not applicable in wide? Or use Header?
+            "ADP Amount": adp_val,
+            "Uzio Amount": uz_val,
+            "Status": status
+        })
+        
+    # Return using shared generator
+    return _generate_output(results)
+
+def _generate_output(results):
     df_res = pd.DataFrame(results)
     
-    # 7. Generate Field Summary by Status
-    # Create a consolidated "Field" column for grouping (prefer Uzio Name, fallback to ADP Desc)
+    # Consolidate Field (Deduction Name)
     df_res["Field"] = df_res.apply(lambda x: x["Uzio Deduction Name"] if x["Uzio Deduction Name"] != "Not Available" else x["ADP Deduction Description"], axis=1)
-    
-    # Pivot to get counts by Status
-    field_summary = df_res.groupby(["Field", "Status"]).size().unstack(fill_value=0)
-    
-    # Ensure all columns exist
+
+    # Pivot Summary
     expected_statuses = [
-        "Data Match", 
-        "Data Mismatch", 
-        "Value Missing in Uzio (ADP has Value)", 
-        "Value Missing in ADP (Uzio has Value)", 
-        "Employee Missing in Uzio", 
-        "Employee Missing in ADP"
+        "Data Match", "Data Mismatch", 
+        "Value Missing in Uzio (ADP has Value)", "Value Missing in ADP (Uzio has Value)", 
+        "Employee Missing in Uzio", "Employee Missing in ADP"
     ]
+    
+    if not df_res.empty:
+        field_summary = df_res.groupby(["Field", "Status"]).size().unstack(fill_value=0)
+    else:
+        field_summary = pd.DataFrame()
+
     for col in expected_statuses:
         if col not in field_summary.columns:
             field_summary[col] = 0
             
-    # Calculate Total
-    field_summary["Total"] = field_summary.sum(axis=1)
+    field_summary["Total"] = field_summary.sum(axis=1) if not field_summary.empty else 0
     
-    # Reorder columns: Total first, then others
+    # Reorder
     cols_order = ["Total"] + [c for c in expected_statuses if c in field_summary.columns] + [c for c in field_summary.columns if c not in expected_statuses and c != "Total"]
     field_summary = field_summary[cols_order]
     
-    # 8. Generate Excel Output
     out_buffer = io.BytesIO()
     with pd.ExcelWriter(out_buffer, engine='openpyxl') as writer:
-        # Summary Sheet
         summary_data = {
             "Total Records": [len(df_res)],
-            "Matches": [len(df_res[df_res["Status"] == "Data Match"])],
-            "Mismatches": [len(df_res[df_res["Status"] == "Data Mismatch"])],
-            "Value Missing in Uzio": [len(df_res[df_res["Status"] == "Value Missing in Uzio (ADP has Value)"])],
-            "Value Missing in ADP": [len(df_res[df_res["Status"] == "Value Missing in ADP (Uzio has Value)"])],
-            "Emp Missing in Uzio": [len(df_res[df_res["Status"] == "Employee Missing in Uzio"])],
-            "Emp Missing in ADP": [len(df_res[df_res["Status"] == "Employee Missing in ADP"])]
+            "Matches": [len(df_res[df_res["Status"] == "Data Match"])] if not df_res.empty else [0],
+            "Mismatches": [len(df_res[df_res["Status"] == "Data Mismatch"])] if not df_res.empty else [0],
+            "Value Missing in Uzio": [len(df_res[df_res["Status"] == "Value Missing in Uzio (ADP has Value)"])] if not df_res.empty else [0],
+            "Emp Missing in Uzio": [len(df_res[df_res["Status"] == "Employee Missing in Uzio"])] if not df_res.empty else [0],
+             "Value Missing in ADP": [len(df_res[df_res["Status"] == "Value Missing in ADP (Uzio has Value)"])] if not df_res.empty else [0],
+            "Emp Missing in ADP": [len(df_res[df_res["Status"] == "Employee Missing in ADP"])] if not df_res.empty else [0]
         }
         pd.DataFrame(summary_data).transpose().reset_index().rename(columns={"index": "Metric", 0: "Count"}).to_excel(writer, sheet_name="Summary", index=False)
-        
-        # Field Summary Sheet
         field_summary.to_excel(writer, sheet_name="field_summary_by_status")
-        
-        # Detailed Data
-        df_res.drop(columns=["Field"], inplace=True) # Remove helper col
+        df_res.drop(columns=["Field"], inplace=True)
         df_res.to_excel(writer, sheet_name="Audit Details", index=False)
     
-    return out_buffer.getvalue(), None, unknown_codes
+    # Return Unknown Codes (empty list for prior payroll for now)
+    return out_buffer.getvalue(), None, []
 
 
-
-# =========================================================
-# UI
-# =========================================================
 # =========================================================
 # UI
 # =========================================================
@@ -377,4 +504,3 @@ if uploaded_file:
             except Exception as e:
                 st.error(f"An unexpected error occurred: {e}")
                 st.exception(e)
-
