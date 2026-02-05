@@ -19,6 +19,16 @@ This Unified Audit Platform allows you to audit and reconcile data between **Uzi
 *   **Protection:** Files must not be password protected.
 *   **Headers:** Ensure column headers are in the first row of each sheet.
 
+### 💡 General Reporting & Filtering Strategy
+For all tools, the general workflow to find errors is:
+1.  Open the **Excel Output Report**.
+2.  Go to the **Comparison Details** (or *Audit Details*) tab.
+3.  **Enable Filters** in Excel (`Data` -> `Filter`).
+4.  Go to the **Status** column (e.g., `Status` or `ADP_SourceOfTruth_Status`).
+5.  **UNCHECK** the box for `"Data Match"`.
+6.  **CHECK** all other boxes (Mismatch, Missing Value, etc.).
+7.  **Result:** You will now see *only* the records that need attention.
+
 ---
 
 ## 3. Tool-Specific Instructions
@@ -27,29 +37,27 @@ This Unified Audit Platform allows you to audit and reconcile data between **Uzi
 **Purpose:** Compares deduction amounts between ADP and Uzio to ensure payroll accuracy.
 
 **Input File Preparation:**
-Prepare a single Excel file with the following **3 Sheets** (names must match approximately):
+Prepare a single Excel file with **3 Sheets**:
 1.  **`Uzio Data`**: Must contain *Employee ID*, *Deduction Name*, and *Amount* (or *Percentage*).
 2.  **`ADP Data`**: Must contain *Associate ID*, *Deduction Code*, and *Deduction Amount*.
 3.  **`Mapping Sheet`**: Maps ADP Codes to Uzio Deduction Names.
     *   **Column A:** ADP Deduction Code/Description
     *   **Column B:** Uzio Deduction Name
 
-**How to Run:**
-1.  Select **"Deduction Audit"** from the sidebar.
-2.  Click **"Browse files"** and upload your prepared Excel file.
-3.  The tool will process the data.
-4.  Click **"Download Report"** to get the results.
-
 **Understanding the Report:**
-*   **Data Match:** Amounts match exactly.
-*   **Data Mismatch:** Amounts differ between ADP and Uzio.
-*   **Value missing in Uzio...:** ADP has a deduction, but Uzio does not.
-*   **Employee Missing...:** Employee exists in one system but not the other.
+The report contains a sheet named **`Audit Details`**.
+*   **Key Column:** `Status`
+*   **Values:**
+    *   `Data Match`: Difference is less than $0.01. (Ignore)
+    *   `Data Mismatch`: Amounts differ. **Action:** Check calculating logic or update Uzio/ADP.
+    *   `Value Missing in Uzio (ADP has Value)`: Employee has a deduction in ADP but nothing in Uzio. **Action:** Add deduction to Uzio.
+    *   `Value Missing in ADP (Uzio has Value)`: Employee has a deduction in Uzio but nothing in ADP. **Action:** Verify if deduction should allow skipping.
+    *   `Employee Missing...`: The ID exists in one file but not the other.
 
 ---
 
 ### B. Prior Payroll Audit
-**Purpose:** Transforms "Prior Payroll" input files (often wide format with multiple pay dates) into a consolidated report.
+**Purpose:** Transforms "Prior Payroll" input files (often wide format with multiple pay dates) into a consolidated report compared against Uzio.
 
 **Input File Preparation:**
 Single Excel file with **3 Sheets**:
@@ -57,10 +65,11 @@ Single Excel file with **3 Sheets**:
 2.  **`ADP Data`** (or "Prior Payroll"): Contains *Associate ID* and *Pay Date* columns.
 3.  **`Mapping Sheet`**: Maps ADP header names to standardized Output names.
 
-**How to Run:**
-1.  Select **"Prior Payroll Audit"**.
-2.  Upload the file.
-3.  Download the **Consolidated Report**.
+**Understanding the Report:**
+The report helps reconcile historical payroll data.
+*   **Sheet:** `Audit Details` output with columns like `Pay_Date`, `Deduction_Name`.
+*   **Status Logic:** Same as *Deduction Audit*.
+*   **Filtering:** Filter by `Pay_Date` to audit specific payroll periods.
 
 ---
 
@@ -75,15 +84,15 @@ Single Excel file with **3 Sheets**:
     *   **Column "Uzio Coloumn"**: Header name in Uzio sheet.
     *   **Column "ADP Coloumn"**: Header name in ADP sheet.
 
-**Key Logic:**
-*   **SSN:** Normalizes to 9 digits (pads with zeros).
-*   **Dates:** Compares dates regardless of format (MM/DD/YYYY matches YYYY-MM-DD).
-*   **Names:** Case-insensitive comparison.
-
-**Output Statuses:**
-*   **Active in Uzio / Terminated in ADP:** Specific status flags for employment changes.
-*   **Data Match:** Fields are identical (after normalization).
-*   **Data Mismatch:** Real discrepancy found.
+**Understanding the Report:**
+*   **Sheet:** `Comparison_Detail_AllFields`
+*   **Status Column:** `ADP_SourceOfTruth_Status`
+*   **Status Code Meanings:**
+    *   `Data Match`: Values match (handling case, spacing, and date formats automatically).
+    *   `Data Mismatch`: Real difference found. (e.g. "Smith" vs "Smyth").
+    *   `Active in Uzio`: (Field: *Employment Status*) Employee is Active in Uzio but Terminated/Retired in ADP. **Action:** Terminate in Uzio?
+    *   `Terminated in Uzio`: (Field: *Employment Status*) Employee is Terminated in Uzio but Active in ADP.
+    *   `Value missing in...`: Field is blank in one system but populated in the other.
 
 ---
 
@@ -98,10 +107,10 @@ Single Excel file with **5 Sheets**:
 4.  **`Payment_Mapping`**: Maps Uzio Payment fields to ADP Payment fields.
 5.  **`Emergency_Mapping`**: Maps Uzio Emergency fields to ADP Emergency fields.
 
-**How to Run:**
-1.  Select **"Payment & Emergency Audit"**.
-2.  Upload the workbook.
-3.  The tool generates **two** reports (one for Payment, one for Emergency).
+**Understanding the Report:**
+This tool generates reports for both Payment and Emergency data.
+*   **Logic:** It intelligently compares "Flat Dollar Amount" vs "Percentage" distributions.
+*   **Status:** `Data Mismatch` here often means a bank account number typo or a distribution priority mismatch.
 
 ---
 
@@ -116,17 +125,15 @@ Single Excel file with **3 Sheets**:
     *   **Column "Uzio Column"**: Header in Uzio sheet.
     *   **Column "Paycom Column"**: Header in Paycom sheet.
 
-**How to Run:**
-1.  Select **"Paycom Census Audit"**.
-2.  Upload the file.
-3.  Download the **Comparison Report**.
+**Understanding the Report:**
+*   **Key Logic:**
+    *   Paycom "On Leave" is treated as "Active".
+    *   "Salaried" (Uzio) matches "Salary" (Paycom).
+*   **Status:** Similar to standard Census Audit. Use filters to identify specific field discrepancies like DOB or Salary mismatches.
 
 ---
 
-## 4. Troubleshooting
+## 4. Troubleshooting common issues
 *   **"Missing Tabs" Error:** Check that your Excel sheet names match the requirements exactly.
 *   **"Column Missing" Error:** Ensure the Mapping Sheet refers to exact column headers found in the Data sheets.
 *   **Empty Report:** Check if the *Employee IDs* match between the two systems (e.g., one has leading zeros, one doesn't).
-
----
-*Generated for Implementation Team Usage*
