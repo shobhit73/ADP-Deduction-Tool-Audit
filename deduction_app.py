@@ -262,7 +262,9 @@ def _run_prior_payroll_audit(df_uzio, df_adp, df_map):
             "VOLUNTARY DEDUCTION : ", 
             "ADDITIONAL HOURS : ", 
             "ADDITIONAL EARNINGS : ", 
-            "DIRECT DEPOSIT : "
+            "DIRECT DEPOSIT : ",
+            "MEMO : ",
+            "MEMO - "
         ]
         for p in prefixes:
             if h.upper().startswith(p):
@@ -271,21 +273,41 @@ def _run_prior_payroll_audit(df_uzio, df_adp, df_map):
 
     adp_deduction_map = {} # ColName -> UzioName (Mapping Value)
     
+    # Pre-compute normalized mapping keys for easier lookup
+    norm_mapping = {}
+    for k, v in mapping.items():
+        norm_mapping[str(k).strip().lower()] = v
+        # Also map the cleaned version of the key itself just in case
+        norm_mapping[clean_header(k).strip().lower()] = v
+
     for col in df_adp.columns:
         norm_c = str(col).strip()
         cleaned_c = clean_header(norm_c)
         
-        # Try direct match
+        # 1. Try Exact Match
         if norm_c in mapping:
             adp_deduction_map[col] = mapping[norm_c]
-        elif norm_c.lower() in mapping:
-             adp_deduction_map[col] = mapping[norm_c.lower()]
+            continue
+            
+        # 2. Try Case-Insensitive Match
+        if norm_c.lower() in norm_mapping:
+            adp_deduction_map[col] = norm_mapping[norm_c.lower()]
+            continue
         
-        # Try cleaned match (e.g. "DEN-DENTAL" from "VOLUNTARY DEDUCTION : DEN-DENTAL")
-        elif cleaned_c in mapping:
+        # 3. Try Cleaned Match (e.g. "DEN-DENTAL" from "VOLUNTARY DEDUCTION : DEN-DENTAL")
+        if cleaned_c in mapping:
             adp_deduction_map[col] = mapping[cleaned_c]
-        elif cleaned_c.lower() in mapping:
-            adp_deduction_map[col] = mapping[cleaned_c.lower()]
+            continue
+            
+        # 4. Try Cleaned Case-Insensitive Match
+        if cleaned_c.lower() in norm_mapping:
+            adp_deduction_map[col] = norm_mapping[cleaned_c.lower()]
+            continue
+
+        # 5. Reverse Check: Is this ADP column actually defined as a Uzio Column Name?
+        # Sometimes user puts the same name in both.
+        # (Optional, but helps if mapping is sparse)
+
 
     adp_records = []
     # Melt/Unpivot
