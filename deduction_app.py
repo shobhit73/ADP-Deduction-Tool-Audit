@@ -281,9 +281,9 @@ def _run_prior_payroll_audit(df_uzio, df_adp, df_map):
                 
     df_adp_clean = pd.DataFrame(adp_records)
     if not df_adp_clean.empty:
-         df_adp_clean = df_adp_clean.groupby(["Employee_ID", "Pay_Date", "Deduction_Name", "Key"], as_index=False)["ADP_Amount"].sum() # Sum handling duplicates
+         df_adp_clean = df_adp_clean.groupby(["Employee_ID", "Pay_Date", "Deduction_Name", "ADP_Raw_Code", "Key"], as_index=False)["ADP_Amount"].sum() # Sum handling duplicates
     else:
-         df_adp_clean = pd.DataFrame(columns=["Employee_ID", "Pay_Date", "Deduction_Name", "Key", "ADP_Amount"])
+         df_adp_clean = pd.DataFrame(columns=["Employee_ID", "Pay_Date", "Deduction_Name", "ADP_Raw_Code", "Key", "ADP_Amount"])
 
     # --- PROCESS UZIO (WIDE) ---
     uz_id_col = next((c for c in df_uzio.columns if "employee" in c.lower() and "id" in c.lower()), None)
