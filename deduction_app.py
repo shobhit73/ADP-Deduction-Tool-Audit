@@ -241,10 +241,25 @@ def _run_prior_payroll_audit(df_uzio, df_adp, df_map):
 
     # --- PROCESS ADP (WIDE) ---
     adp_id_col = next((c for c in df_adp.columns if "associate" in c.lower() and "id" in c.lower()), None)
-    adp_date_col = next((c for c in df_adp.columns if "pay" in c.lower() and "date" in c.lower()), None)
+    
+    # Smarter Date Column Selection for ADP
+    adp_date_col = None
+    adp_date_prefs = ["PAY DATE", "CHECK DATE", "PAY_DATE"]
+    
+    # 1. Try exact/preferred matches
+    for pref in adp_date_prefs:
+        match = next((c for c in df_adp.columns if pref.lower() in str(c).lower()), None)
+        if match:
+            adp_date_col = match
+            break
+            
+    # 2. Fallback to generic "pay" + "date" if NOT "period"
+    if not adp_date_col:
+        adp_date_col = next((c for c in df_adp.columns if "pay" in c.lower() and "date" in c.lower() and "period" not in c.lower()), None)
     
     if not adp_id_col or not adp_date_col:
         return None, f"ADP Sheet missing required columns (Associate ID, Pay Date). Found: {list(df_adp.columns)}", []
+
 
     # Identify Deduction Columns in ADP Data
     # They should match keys in 'mapping'
@@ -339,7 +354,25 @@ def _run_prior_payroll_audit(df_uzio, df_adp, df_map):
 
     # --- PROCESS UZIO (WIDE) ---
     uz_id_col = next((c for c in df_uzio.columns if "employee" in c.lower() and "id" in c.lower()), None)
-    uz_date_col = next((c for c in df_uzio.columns if "pay" in c.lower() and "date" in c.lower()), None)
+    
+    # Smarter Date Column Selection for Uzio
+    uz_date_col = None
+    uz_date_prefs = ["PAY CHECK DATE", "CHECK DATE", "PAYMENT DATE"]
+    
+    # 1. Try exact/preferred matches
+    for pref in uz_date_prefs:
+        match = next((c for c in df_uzio.columns if pref.lower() in str(c).lower()), None)
+        if match:
+            uz_date_col = match
+            break
+            
+    # 2. Fallback to generic "pay" + "date" if NOT "period" (ignores Period Start/End)
+    if not uz_date_col:
+        uz_date_col = next((c for c in df_uzio.columns if "pay" in c.lower() and "date" in c.lower() and "period" not in c.lower()), None)
+
+    # 3. Last resort fallback (user might only have Period End Date)
+    if not uz_date_col:
+         uz_date_col = next((c for c in df_uzio.columns if "pay" in c.lower() and "date" in c.lower()), None)
     
     if not uz_id_col or not uz_date_col:
         return None, f"Uzio Sheet missing required columns (Employee ID, Pay Date). Found: {list(df_uzio.columns)}", []
