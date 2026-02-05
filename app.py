@@ -260,8 +260,8 @@ if not st.session_state.messages and st.session_state.step == "idle":
         # Use columns to effectively center the image since st.image defaults to left
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
-            st.image("UZIO-Website-Logo (1).png", width=200) # Adjust width as needed
-            
+            st.image("uzio_logo.png", width=200) # Adjust width as needed
+                        
         st.markdown("""
             <div class="hero-container">
                 <div class="hero-title">AI Powered Audit Assistant</div>

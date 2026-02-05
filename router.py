@@ -28,7 +28,7 @@ class SemanticRouter:
             self.initialized = True
             logger.info("Semantic Router initialized successfully.")
         except ImportError:
-            st.error("⚠️ Library 'sentence-transformers' found. Using keyword fallback.")
+            st.warning("⚠️ Library 'sentence-transformers' not found. AI features disabled (using keyword fallback).")
             logger.error("sentence-transformers not installed.")
         except Exception as e:
             st.error(f"⚠️ Error loading model: {e}")
