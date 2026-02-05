@@ -14,7 +14,7 @@ st.markdown("""
     
     /* Sidebar styling */
     [data-testid="stSidebar"] {
-        background-color: #2c3e50;
+        background-color: #0d47a1;
     }
     [data-testid="stSidebar"] * {
         color: #ecf0f1 !important;
@@ -22,7 +22,7 @@ st.markdown("""
     
     /* Headers */
     h1, h2, h3 {
-        color: #2c3e50;
+        color: #0d47a1;
         font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     }
     
@@ -50,7 +50,7 @@ st.markdown("""
         transition: background-color 0.3s;
     }
     .stRadio label:hover {
-        background-color: #34495e;
+        background-color: #1976d2;
     }
     
     /* Info box */
@@ -71,12 +71,13 @@ with st.sidebar:
         "📊 Deduction Audit", 
         "💰 Prior Payroll Audit",
         "👥 Census Audit",
-        "🚑 Payment & Emergency Audit"
+        "🚑 Payment & Emergency Audit",
+        "🏢 Paycom Census Audit"
     ], index=0)
     
     st.markdown("---")
     st.info("ℹ️ Select a module to begin your audit.")
-    st.markdown("v2.0 | Unified Platform")
+    st.markdown("v2.1 | Unified Platform")
 
 
 # Router
@@ -99,3 +100,8 @@ elif tool_option == "🚑 Payment & Emergency Audit":
     import payment_emergency_audit_app
     importlib.reload(payment_emergency_audit_app)
     payment_emergency_audit_app.render_ui()
+
+elif tool_option == "🏢 Paycom Census Audit":
+    import paycom_census_audit_app
+    importlib.reload(paycom_census_audit_app)
+    paycom_census_audit_app.render_ui()
