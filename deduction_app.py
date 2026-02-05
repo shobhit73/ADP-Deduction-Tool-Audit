@@ -377,17 +377,4 @@ if uploaded_file:
             except Exception as e:
                 st.error(f"An unexpected error occurred: {e}")
                 st.exception(e)
-                    today_str = datetime.now().strftime("%b-%d-%Y")
-                    # Clean client name to ensure valid filename (replace spaces with underscores)
-                    clean_client = "".join([c if c.isalnum() or c in (' ', '_', '-') else '' for c in client_name]).strip().replace(" ", "_")
-                    filename = f"{clean_client}_Deduction_Report_{today_str}.xlsx"
-                    
-                    st.download_button(
-                        label="Download Audit Report",
-                        data=report_data,
-                        file_name=filename,
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    )
-            except Exception as e:
-                st.error(f"An unexpected error occurred: {e}")
-                st.exception(e)
+
