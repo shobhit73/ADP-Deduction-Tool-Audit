@@ -75,7 +75,7 @@ st.markdown("""
 # =========================================================
 if "messages" not in st.session_state:
     st.session_state.messages = [
-        {"role": "assistant", "content": "Hello! I am your Audit Assistant. I can help you reconcile data between Uzio and ADP/Paycom. Which audit would you like to run today?"}
+        {"role": "assistant", "content": "Hello! I am your Audit Assistant. I can help you reconcile data between **Uzio** and **ADP/Paycom**.\n\nType a command like **\"Run Census Audit\"** or click a button below to start."}
     ]
 
 if "current_tool" not in st.session_state:
@@ -90,7 +90,7 @@ if "step" not in st.session_state:
 
 def reset_chat():
     st.session_state.messages = [
-        {"role": "assistant", "content": "Is there anything else I can help you with?"}
+        {"role": "assistant", "content": "Chat cleared. Is there anything else I can help you with?"}
     ]
     st.session_state.current_tool = None
     st.session_state.step = "idle"
@@ -102,11 +102,17 @@ def handle_tool_selection(tool_name, tool_key):
     st.session_state.step = "waiting_for_upload"
     
     # Add user choice to chat
-    st.session_state.messages.append({"role": "user", "content": f"I want to run the {tool_name}."})
+    st.session_state.messages.append({"role": "user", "content": f"Run {tool_name}"})
     
     # Add bot response
-    response = f"Great! Please upload the Excel file for the **{tool_name}**. It should contain the required Data and Mapping sheets."
+    response = f"Sure! Please upload the Excel file for **{tool_name}**."
     st.session_state.messages.append({"role": "assistant", "content": response})
+    st.rerun()
+
+def handle_cancel():
+    st.session_state.step = "idle"
+    st.session_state.messages.append({"role": "user", "content": "Cancel"})
+    st.session_state.messages.append({"role": "assistant", "content": "Action cancelled. What would you like to do next?"})
     st.rerun()
 
 def process_file(uploaded_file):
@@ -178,6 +184,33 @@ def post_process_success(data, name):
     })
     st.session_state.step = "result"
 
+def process_text_input(txt):
+    """Identify intent from text input"""
+    txt = txt.lower()
+    
+    # Handle Cancellation
+    if txt in ["cancel", "stop", "abort", "back"]:
+        handle_cancel()
+        return
+
+    # Handle Tools
+    if "deduction" in txt:
+        handle_tool_selection("Deduction Audit", "Deduction Audit")
+    elif "prior" in txt:
+        handle_tool_selection("Prior Payroll Audit", "Prior Payroll Audit")
+    elif "census" in txt and "paycom" not in txt:
+        handle_tool_selection("Census Audit", "Census Audit")
+    elif "payment" in txt or "emergency" in txt:
+        handle_tool_selection("Payment & Emergency Audit", "Payment & Emergency Audit")
+    elif "paycom" in txt:
+        handle_tool_selection("Paycom Census Audit", "Paycom Census Audit")
+    
+    # Handle Greetings / Unknown
+    else:
+        st.session_state.messages.append({"role": "user", "content": txt})
+        st.session_state.messages.append({"role": "assistant", "content": "I'm not sure which tool you mean. Try typing **\"Deduction\"**, **\"Census\"**, or select a Quick Action."})
+        st.rerun()
+
 # =========================================================
 # Main UI Loop
 # =========================================================
@@ -209,7 +242,9 @@ for msg in st.session_state.messages:
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
 
-# 2. Dynamic Input Area
+# 2. Dynamic Input Area (Contextual Widgets)
+# Note: chat_input is persistent below, this area is for additional widgets (Buttons, Uploaders)
+
 if st.session_state.step == "idle":
     st.markdown("---")
     st.markdown("##### Quick Actions")
@@ -234,26 +269,7 @@ if st.session_state.step == "idle":
         if st.button("📊 Paycom Audit"):
             handle_tool_selection("Paycom Census Audit", "Paycom Census Audit")
     with c6:
-        pass # Empty slot for alignment
-
-    # Handle text input (simple intent matching)
-    user_input = st.chat_input("Type your request (e.g. 'run census audit')...")
-    if user_input:
-        txt = user_input.lower()
-        if "deduction" in txt:
-            handle_tool_selection("Deduction Audit", "Deduction Audit")
-        elif "prior" in txt:
-            handle_tool_selection("Prior Payroll Audit", "Prior Payroll Audit")
-        elif "census" in txt and "paycom" not in txt:
-            handle_tool_selection("Census Audit", "Census Audit")
-        elif "payment" in txt or "emergency" in txt:
-            handle_tool_selection("Payment & Emergency Audit", "Payment & Emergency Audit")
-        elif "paycom" in txt:
-            handle_tool_selection("Paycom Census Audit", "Paycom Census Audit")
-        else:
-            st.session_state.messages.append({"role": "user", "content": user_input})
-            st.session_state.messages.append({"role": "assistant", "content": "I'm not sure which tool you mean. Please select one of the Quick Actions above."})
-            st.rerun()
+        pass 
 
 elif st.session_state.step == "waiting_for_upload":
     # Show uploader only when triggered
@@ -261,15 +277,16 @@ elif st.session_state.step == "waiting_for_upload":
     
     col_back, col_dummy = st.columns([1, 5])
     if col_back.button("🔙 Cancel"):
-        st.session_state.step = "idle"
-        st.session_state.messages.append({"role": "user", "content": "Cancel"})
-        st.session_state.messages.append({"role": "assistant", "content": "Action cancelled."})
-        st.rerun()
+        handle_cancel()
 
     if uploaded_file:
         process_file(uploaded_file)
 
 elif st.session_state.step == "result":
-    # Optionally, automatically switch back to idle after a delay or just leave the "Start New Audit" button
     if st.button("✨ Start New Audit"):
         reset_chat()
+
+# 3. Persistent Chat Input (Always Visible)
+user_input = st.chat_input("Type your request here (e.g. 'Run Census Audit')...")
+if user_input:
+    process_text_input(user_input)
