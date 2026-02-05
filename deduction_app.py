@@ -118,11 +118,13 @@ def run_audit(file_bytes):
         if not deduction_name and raw_code:
             deduction_name = mapping.get(raw_code, mapping.get(raw_code.lower()))
             
-        # If still unknown
+        # Try Code if Description failed
+        if not deduction_name and raw_code:
+            deduction_name = mapping.get(raw_code, mapping.get(raw_code.lower()))
+            
+        # If still unknown, SKIP this record as per requirement (only mapped items should appear)
         if not deduction_name:
-            # Use Description for the label if available, else Code
-            label = raw_desc if raw_desc else raw_code
-            deduction_name = f"UNKNOWN_DED_{label}"
+            continue
         
         amt = clean_money_val(row[adp_amt_col])
         
@@ -185,21 +187,7 @@ def run_audit(file_bytes):
     uzio_emps = set(df_uz_clean["Uzio_Employee_ID"].unique())
 
     # Check for Unknown Codes (Debug/Warning for User)
-    # Check for rows where Deduction_Name starts with UNKNOWN_DED_
-    unknown_mask = df_adp_clean["Deduction_Name"].str.startswith("UNKNOWN_DED_")
-    unknown_df = df_adp_clean[unknown_mask]
-    
-    # Collect unique descriptions (or codes if desc missing) that failed to map
-    unknown_items = set()
-    for _, row in unknown_df.iterrows():
-        desc = row["ADP_Description"]
-        code = row["ADP_Raw_Code"]
-        if desc and str(desc).strip() != "":
-            unknown_items.add(desc)
-        else:
-            unknown_items.add(code)
-            
-    unknown_codes = sorted(list(unknown_items))
+    unknown_codes = [] # Empty list as we are skipping them now
 
     # Determine Status
     results = []
@@ -345,9 +333,6 @@ if uploaded_file:
                     st.error(error_msg)
                 else:
                     st.success("Audit Completed Successfully!")
-                    
-                    if len(unknown_codes) > 0:
-                        st.warning(f"⚠️ **Warning**: The following **ADP Deduction Descriptions** were found in the ADP file but are missing from your Mapping Sheet. They have been labeled as 'UNKNOWN_DED_...' in the report.\n\n" + ", ".join([f"`{c}`" for c in unknown_codes]))
                     
                     # Format: Client_Name_Deduction_Report_Jan-31-2026.xlsx
                     today_str = datetime.now().strftime("%b-%d-%Y")
