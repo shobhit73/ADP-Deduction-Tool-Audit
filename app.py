@@ -62,8 +62,8 @@ st.markdown("""
 
 # Sidebar Navigation with Icons
 with st.sidebar:
-    st.image("https://cdn-icons-png.flaticon.com/512/2830/2830206.png", width=50) # Placeholder audit icon
-    st.title("Audit Hub")
+    # Using an emoji as a logo since external images can be blocked/broken
+    st.markdown("# 🛡️ Audit Hub") 
     st.markdown("---")
     
     # Using emojis to make it look "cool" and friendlier
