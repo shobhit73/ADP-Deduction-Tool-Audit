@@ -5,12 +5,18 @@ import pandas as pd
 import io
 import datetime
 
-# Import Audit Tools (Ensure these files are in the same directory)
+# Import Audit Tools
 import deduction_audit_app
 import prior_payroll_audit_app
 import census_audit_app
 import payment_emergency_audit_app
 import paycom_census_audit_app
+
+# Import Semantic Router
+try:
+    from router import router
+except ImportError:
+    router = None
 
 # Set Page Config - WIDE LAYOUT for modern feel
 st.set_page_config(page_title="Audit Assistant", layout="wide", page_icon="🤖")
@@ -130,6 +136,11 @@ if "current_tool" not in st.session_state:
 if "step" not in st.session_state:
     st.session_state.step = "idle"
 
+# Initialize Semantic Router (Lazy Load)
+if router and not router.initialized:
+    with st.spinner("Initializing AI Brain... (First run may take a moment)"):
+        router.initialize()
+
 # =========================================================
 # Helper Functions
 # =========================================================
@@ -219,19 +230,36 @@ def post_process_success(data, name):
     st.session_state.step = "result"
 
 def process_text_input(txt):
-    txt = txt.lower()
-    if txt in ["cancel", "back", "stop", "home"]:
+    lower_txt = txt.lower()
+    
+    # 1. Check for Commands
+    if lower_txt in ["cancel", "back", "stop", "home"]:
         handle_cancel()
         return
 
-    if "deduction" in txt: handle_tool_selection("Deduction Audit", "Deduction Audit")
-    elif "prior" in txt: handle_tool_selection("Prior Payroll Audit", "Prior Payroll Audit")
-    elif "census" in txt and "paycom" not in txt: handle_tool_selection("Census Audit", "Census Audit")
-    elif "payment" in txt: handle_tool_selection("Payment & Emergency Audit", "Payment & Emergency Audit")
-    elif "paycom" in txt: handle_tool_selection("Paycom Census Audit", "Paycom Census Audit")
+    # 2. Try Semantic Router (AI)
+    predicted_tool = None
+    confidence = 0.0
+    
+    if router and router.initialized:
+        predicted_tool, confidence = router.predict(lower_txt)
+    
+    # 3. Decision Logic (AI > Keyword)
+    if predicted_tool and confidence > 0.3: # Threshold for AI confidence
+        handle_tool_selection(predicted_tool, predicted_tool)
+        return
+        
+    # 4. Fallback to Simple Keywords (Legacy)
+    if "deduction" in lower_txt: handle_tool_selection("Deduction Audit", "Deduction Audit")
+    elif "prior" in lower_txt: handle_tool_selection("Prior Payroll Audit", "Prior Payroll Audit")
+    elif "census" in lower_txt and "paycom" not in lower_txt: handle_tool_selection("Census Audit", "Census Audit")
+    elif "payment" in lower_txt: handle_tool_selection("Payment & Emergency Audit", "Payment & Emergency Audit")
+    elif "paycom" in lower_txt: handle_tool_selection("Paycom Census Audit", "Paycom Census Audit")
+    
+    # 5. Unknown
     else:
         st.session_state.messages.append({"role": "user", "content": txt})
-        st.session_state.messages.append({"role": "assistant", "content": "I couldn't recognize that tool. Try selecting from the options above."})
+        st.session_state.messages.append({"role": "assistant", "content": "I wasn't sure what you meant. Try keywords like **'deduction'**, **'census'**, or **'prior payroll'**."})
         st.rerun()
 
 # =========================================================
