@@ -235,7 +235,13 @@ def _run_prior_payroll_audit(df_uzio, df_adp, df_map):
     for _, row in df_map.iterrows():
         k = str(row[map_adp_col]).strip()
         v = str(row[map_uzio_col]).strip()
-        if k and v and k.lower() != 'nan' and v.lower() != 'nan':
+        
+        # FIX: Allow keys even if Value is NaN (Unmapped fields that should appear in report)
+        if k and k.lower() != 'nan':
+            # If value is missing/nan, use the Key itself as the "mapped" name so it appears in output
+            if not v or v.lower() == 'nan' or v.lower() == 'na':
+                v = k
+            
             mapping[k] = v
             # Also precise match for ADP columns might be needed, so keep original and normalized
             mapping[k.lower()] = v
