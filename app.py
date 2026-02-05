@@ -28,9 +28,7 @@ st.markdown("""
     
     /* Message Styling */
     .stChatMessage {
-        background-color: #f7f9fc;
         border-radius: 12px;
-        padding: 10px;
         margin-bottom: 10px;
     }
     
@@ -39,20 +37,35 @@ st.markdown("""
         color: #0d47a1;
         text-align: center;
         font-family: 'Segoe UI', sans-serif;
+        font-weight: 700;
+        margin-bottom: 30px;
+    }
+    
+    /* Suggestions Area */
+    .suggestion-container {
+        border: 1px solid #e0e0e0;
+        border-radius: 15px;
+        padding: 20px;
+        background-color: #ffffff;
+        margin-top: 20px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
     }
     
     /* Button Chips */
     .stButton button {
         border-radius: 20px;
-        background-color: #e3f2fd;
-        color: #0d47a1;
-        border: 1px solid #0d47a1;
+        background-color: #f0f7ff;
+        color: #1976d2;
+        border: 1px solid #1976d2;
         font-weight: 600;
         transition: all 0.2s;
+        width: 100%; /* Full width within column */
     }
     .stButton button:hover {
-        background-color: #0d47a1;
+        background-color: #1976d2;
         color: white;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(25, 118, 210, 0.2);
     }
 </style>
 """, unsafe_allow_html=True)
@@ -83,16 +96,6 @@ def reset_chat():
     st.session_state.step = "idle"
     st.rerun()
 
-def typewriter_effect(text, container):
-    """Simulates a typing effect for the bot"""
-    displayed_text = ""
-    message_placeholder = container.empty()
-    for char in text:
-        displayed_text += char
-        message_placeholder.markdown(displayed_text + "▌")
-        time.sleep(0.01)
-    message_placeholder.markdown(displayed_text)
-
 def handle_tool_selection(tool_name, tool_key):
     """Transition to upload state for a selected tool"""
     st.session_state.current_tool = tool_key
@@ -113,7 +116,7 @@ def process_file(uploaded_file):
     st.session_state.messages.append({"role": "user", "content": f"Uploaded: {uploaded_file.name}"})
     
     # Show processing message
-    with st.chat_message("assistant"):
+    with st.chat_message("assistant", avatar="🤖"):
         with st.spinner(f"Analyzing {uploaded_file.name} using {tool_key}..."):
             try:
                 # ----------------Deduction Audit----------------
@@ -179,11 +182,20 @@ def post_process_success(data, name):
 # Main UI Loop
 # =========================================================
 
-st.title("🤖 Audit Assistant")
+# Clear Chat Button in Top Right
+col_title, col_reset = st.columns([5, 1])
+with col_title:
+    st.title("🤖 Audit Assistant")
+with col_reset:
+    if st.button("🔄 Reset", help="Clear chat history"):
+        reset_chat()
 
 # 1. Render History
 for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
+    # Set avatar based on role
+    avatar_icon = "🤖" if msg["role"] == "assistant" else "👤"
+    
+    with st.chat_message(msg["role"], avatar=avatar_icon):
         st.markdown(msg["content"])
         
         # Render download buttons if present in message metadata
@@ -199,25 +211,33 @@ for msg in st.session_state.messages:
 
 # 2. Dynamic Input Area
 if st.session_state.step == "idle":
-    st.write("---")
-    st.caption("Suggested Actions:")
+    st.markdown("---")
+    st.markdown("##### Quick Actions")
     
-    col1, col2, col3 = st.columns(3)
-    col4, col5 = st.columns(2)
+    # Grid Layout for Buttons
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        if st.button("💰 Deduction Audit"):
+            handle_tool_selection("Deduction Audit", "Deduction Audit")
+    with c2:
+        if st.button("📅 Prior Payroll"):
+            handle_tool_selection("Prior Payroll Audit", "Prior Payroll Audit")
+    with c3:
+        if st.button("👥 Census Audit"):
+            handle_tool_selection("Census Audit", "Census Audit")
     
-    if col1.button("Deduction Audit"):
-        handle_tool_selection("Deduction Audit", "Deduction Audit")
-    if col2.button("Prior Payroll"):
-        handle_tool_selection("Prior Payroll Audit", "Prior Payroll Audit")
-    if col3.button("Census Audit"):
-        handle_tool_selection("Census Audit", "Census Audit")
-    if col4.button("Payment & Emergency"):
-        handle_tool_selection("Payment & Emergency Audit", "Payment & Emergency Audit")
-    if col5.button("Paycom Audit"):
-        handle_tool_selection("Paycom Census Audit", "Paycom Census Audit")
+    c4, c5, c6 = st.columns(3)
+    with c4:
+        if st.button("💳 Payment & Emergency"):
+            handle_tool_selection("Payment & Emergency Audit", "Payment & Emergency Audit")
+    with c5:
+        if st.button("📊 Paycom Audit"):
+            handle_tool_selection("Paycom Census Audit", "Paycom Census Audit")
+    with c6:
+        pass # Empty slot for alignment
 
     # Handle text input (simple intent matching)
-    user_input = st.chat_input("Or type what you need (e.g., 'run deduction audit')")
+    user_input = st.chat_input("Type your request (e.g. 'run census audit')...")
     if user_input:
         txt = user_input.lower()
         if "deduction" in txt:
@@ -232,7 +252,7 @@ if st.session_state.step == "idle":
             handle_tool_selection("Paycom Census Audit", "Paycom Census Audit")
         else:
             st.session_state.messages.append({"role": "user", "content": user_input})
-            st.session_state.messages.append({"role": "assistant", "content": "I'm not sure which tool you mean. Please select one of the buttons above or type the tool name clearly."})
+            st.session_state.messages.append({"role": "assistant", "content": "I'm not sure which tool you mean. Please select one of the Quick Actions above."})
             st.rerun()
 
 elif st.session_state.step == "waiting_for_upload":
@@ -240,15 +260,16 @@ elif st.session_state.step == "waiting_for_upload":
     uploaded_file = st.file_uploader(f"Upload file for {st.session_state.current_tool}", key="dynamic_uploader")
     
     col_back, col_dummy = st.columns([1, 5])
-    if col_back.button("Cancel / Back"):
+    if col_back.button("🔙 Cancel"):
         st.session_state.step = "idle"
         st.session_state.messages.append({"role": "user", "content": "Cancel"})
-        st.session_state.messages.append({"role": "assistant", "content": "Okay, operation cancelled. What else do you need?"})
+        st.session_state.messages.append({"role": "assistant", "content": "Action cancelled."})
         st.rerun()
 
     if uploaded_file:
         process_file(uploaded_file)
 
 elif st.session_state.step == "result":
-    if st.button("Start New Audit"):
+    # Optionally, automatically switch back to idle after a delay or just leave the "Start New Audit" button
+    if st.button("✨ Start New Audit"):
         reset_chat()
