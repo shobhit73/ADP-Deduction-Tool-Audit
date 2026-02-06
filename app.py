@@ -42,10 +42,11 @@ st.markdown("""
     /* Radio buttons in sidebar */
     .stRadio > div {
         background-color: transparent;
+        margin-bottom: -15px; /* Compact spacing */
     }
     .stRadio label {
-        font-size: 16px;
-        padding: 10px;
+        font-size: 15px;
+        padding: 4px 10px; /* Reduced padding */
         border-radius: 5px;
         color: #ffffff !important;
         transition: background-color 0.3s;
@@ -53,21 +54,25 @@ st.markdown("""
     .stRadio label:hover {
         background-color: #1a1a4b;
     }
+    .stRadio p {
+        font-size: 15px; /* Consistent font size */
+    }
     
     /* Info box */
     .stAlert {
         border-radius: 8px;
+        padding: 0.5rem; /* Compact info box */
     }
     
     /* Style for Provider Headers in Sidebar */
     .provider-header {
-        font-size: 1.2rem;
+        font-size: 1.1rem;
         font-weight: bold;
         color: #e2e8f0;
-        margin-top: 1rem;
-        margin-bottom: 0.5rem;
+        margin-top: 0.5rem;
+        margin-bottom: 0px;
         border-bottom: 1px solid #4a5568;
-        padding-bottom: 0.25rem;
+        padding-bottom: 0.1rem;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -81,8 +86,6 @@ with st.sidebar:
     
     # 1. Select Provider
     provider = st.radio("Select Provider", ["ADP", "Paycom"], index=0)
-    
-    st.markdown("---")
     
     # 2. Dynamic Tool Selection based on Provider
     tool_option = None
@@ -104,9 +107,10 @@ with st.sidebar:
             "Paycom Withholding Audit"
         ], index=0, label_visibility="collapsed")
 
+    # Footer
     st.markdown("---")
-    st.info(f"Mode: {provider} Audit")
-    st.markdown("v2.2 | Unified Platform")
+    st.caption(f"Mode: {provider} Audit")
+    st.caption("v2.3 | Unified Platform")
 
 # ---------------------------------------------------------
 # Router Logic
