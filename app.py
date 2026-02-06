@@ -93,7 +93,8 @@ with st.sidebar:
             "Deduction Audit", 
             "Prior Payroll Audit",
             "Census Audit",
-            "Payment & Emergency Audit"
+            "Payment & Emergency Audit",
+            "ADP Withholding Audit"
         ], index=0, label_visibility="collapsed")
         
     elif provider == "Paycom":
@@ -137,6 +138,11 @@ elif tool_option == "Paycom Census Audit":
     paycom_census_audit_app.render_ui()
 
 elif tool_option == "Paycom Withholding Audit":
-    import withholding_audit_app
-    importlib.reload(withholding_audit_app)
-    withholding_audit_app.render_ui()
+    import paycom_withholding_audit_app
+    importlib.reload(paycom_withholding_audit_app)
+    paycom_withholding_audit_app.render_ui()
+
+elif tool_option == "ADP Withholding Audit":
+    import adp_withholding_audit_app
+    importlib.reload(adp_withholding_audit_app)
+    adp_withholding_audit_app.render_ui()

@@ -160,6 +160,23 @@ You need **3 files** (CSV and Excel):
 
 ---
 
+### G. ADP Withholding Audit
+**Purpose:** Audits Federal and State Income Tax withholding setups between ADP and Uzio.
+
+**Input File Preparation:**
+You need **3 files** (CSV or Excel):
+1.  **`ADP Export`**: Wide format export from ADP (one row per employee). Must contain Associate ID and relevant Tax/Status columns.
+2.  **`UZIO Withholding Export`**: Long format export. Columns: `employee_id`, `withholding_field_key`, `withholding_field_value`.
+3.  **`Mapping Sheet`**: Excel file mapping keys.
+    *   **Column "Uzio Columns"**: Key from Uzio file (e.g., `FIT_FILING_STATUS`).
+    *   **Column "ADP Columns"**: Header name in ADP file.
+
+**Understanding the Report:**
+*   **Logic:** Uses the same core logic as the Paycom Withholding tool (cents to dollars, boolean normalization, etc.).
+*   **Unique Feature:** Allows filtering by "Active Status" to exclude terminated employees from the audit.
+
+---
+
 ## 4. Troubleshooting common issues
 *   **"Missing Tabs" Error:** Check that your Excel sheet names match the requirements exactly.
 *   **"Column Missing" Error:** Ensure the Mapping Sheet refers to exact column headers found in the Data sheets.
