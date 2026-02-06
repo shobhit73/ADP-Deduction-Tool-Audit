@@ -10,10 +10,9 @@ This Unified Audit Platform allows you to audit and reconcile data between **Uzi
 ## 2. General Instructions
 
 ### How to Access the Tool
-1.  Open the application URL.
-2.  You will see the **"Audit Assistant"** chat interface.
-3.  **Interact** by clicking the suggestion buttons (e.g., "Deduction Audit") or typing your request (e.g., "Run Census Audit").
-4.  The assistant will guide you through uploading the correct files.
+1.  Open the application URL (or run `streamlit run app.py` if running locally).
+2.  You will see a blue sidebar on the left with the title **"Audit Hub"**.
+3.  Use the **"Select Tool"** menu to choose the specific audit module you need.
 
 ### File Requirements (Universal)
 *   **Format:** All input files must be in **Excel (.xlsx)** format.
