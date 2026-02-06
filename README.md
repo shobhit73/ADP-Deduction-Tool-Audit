@@ -6,6 +6,7 @@ A unified platform for auditing and reconciling data across **Uzio**, **ADP**, a
 
 ## 🛡️ Audit Modules
 
+### ADP Tools
 1.  **📊 Deduction Audit**
     *   Compares deduction data between ADP and Uzio.
     *   Identifies mismatches in deduction codes and amounts.
@@ -22,9 +23,18 @@ A unified platform for auditing and reconciling data across **Uzio**, **ADP**, a
     *   Reviews Payment details and Emergency Contact information.
     *   Generates independent reports for Payment and Emergency data.
 
-5.  **🏢 Paycom Census Audit**
+5.  **🏦 ADP Withholding Audit** (*New*)
+    *   Audits Federal and State Income Tax withholding setups between ADP and Uzio.
+    *   Filters by Active status and validates tax parameters.
+
+### Paycom Tools
+6.  **🏢 Paycom Census Audit**
     *   Audits Paycom census data against Uzio records.
     *   Includes specific logic for Paycom fields and mapping.
+
+7.  **🧾 Paycom Withholding Audit** (*New*)
+    *   Audits Paycom withholding setups against Uzio.
+    *   Standardizes differences in amount formatting (cents vs dollars).
 
 ## 🚀 Getting Started
 
@@ -63,6 +73,9 @@ The application will open in your default browser (usually at `http://localhost:
 *   `census_audit_app.py`: Logic for Census Audit.
 *   `payment_emergency_audit_app.py`: Logic for Payment & Emergency Audit.
 *   `paycom_census_audit_app.py`: Logic for Paycom Census Audit.
+*   `paycom_withholding_audit_app.py`: Logic for Paycom Withholding Audit.
+*   `adp_withholding_audit_app.py`: Logic for ADP Withholding Audit.
+*   `withholding_audit_core.py`: Shared logic for Withholding audits.
 
 ## 🎨 Features
 *   **Unified Interface**: Single URL for all audit tasks.

@@ -11,8 +11,9 @@ This Unified Audit Platform allows you to audit and reconcile data between **Uzi
 
 ### How to Access the Tool
 1.  Open the application URL (or run `streamlit run app.py` if running locally).
-2.  You will see a blue sidebar on the left with the title **"Audit Hub"**.
-3.  Use the **"Select Tool"** menu to choose the specific audit module you need.
+2.  You will see a sidebar on the left with the title **"Audit Hub"**.
+3.  First, select the **Provider** (ADP or Paycom).
+4.  Then, use the specific **"Select Tool"** menu to choose the audit module you need.
 
 ### File Requirements (Universal)
 *   **Format:** All input files must be in **Excel (.xlsx)** format.
