@@ -58,28 +58,58 @@ st.markdown("""
     .stAlert {
         border-radius: 8px;
     }
+    
+    /* Style for Provider Headers in Sidebar */
+    .provider-header {
+        font-size: 1.2rem;
+        font-weight: bold;
+        color: #e2e8f0;
+        margin-top: 1rem;
+        margin-bottom: 0.5rem;
+        border-bottom: 1px solid #4a5568;
+        padding-bottom: 0.25rem;
+    }
 </style>
 """, unsafe_allow_html=True)
 
-# Sidebar Navigation
+# ---------------------------------------------------------
+# Sidebar Navigation Grouping
+# ---------------------------------------------------------
 with st.sidebar:
     st.markdown("## Audit Hub") 
     st.markdown("---")
     
-    tool_option = st.radio("Select Tool", [
-        "Deduction Audit", 
-        "Prior Payroll Audit",
-        "Census Audit",
-        "Payment & Emergency Audit",
-        "Paycom Census Audit",
-        "Paycom Withholding Audit"
-    ], index=0)
+    # 1. Select Provider
+    provider = st.radio("Select Provider", ["ADP", "Paycom"], index=0)
     
     st.markdown("---")
-    st.info("Select a module to begin your audit.")
-    st.markdown("v2.1 | Unified Platform")
+    
+    # 2. Dynamic Tool Selection based on Provider
+    tool_option = None
+    
+    if provider == "ADP":
+        st.markdown('<div class="provider-header">ADP Tools</div>', unsafe_allow_html=True)
+        tool_option = st.radio("Select ADP Tool", [
+            "Deduction Audit", 
+            "Prior Payroll Audit",
+            "Census Audit",
+            "Payment & Emergency Audit"
+        ], index=0, label_visibility="collapsed")
+        
+    elif provider == "Paycom":
+        st.markdown('<div class="provider-header">Paycom Tools</div>', unsafe_allow_html=True)
+        tool_option = st.radio("Select Paycom Tool", [
+            "Paycom Census Audit",
+            "Paycom Withholding Audit"
+        ], index=0, label_visibility="collapsed")
 
+    st.markdown("---")
+    st.info(f"Mode: {provider} Audit")
+    st.markdown("v2.2 | Unified Platform")
+
+# ---------------------------------------------------------
 # Router Logic
+# ---------------------------------------------------------
 if tool_option == "Deduction Audit":
     import deduction_audit_app
     importlib.reload(deduction_audit_app) 
@@ -93,6 +123,7 @@ elif tool_option == "Prior Payroll Audit":
 elif tool_option == "Census Audit":
     import census_audit_app
     importlib.reload(census_audit_app)
+    # Note: This is practically "ADP Census Audit"
     census_audit_app.render_ui()
 
 elif tool_option == "Payment & Emergency Audit":
