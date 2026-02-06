@@ -71,7 +71,8 @@ with st.sidebar:
         "Prior Payroll Audit",
         "Census Audit",
         "Payment & Emergency Audit",
-        "Paycom Census Audit"
+        "Paycom Census Audit",
+        "Paycom Withholding Audit"
     ], index=0)
     
     st.markdown("---")
@@ -103,3 +104,8 @@ elif tool_option == "Paycom Census Audit":
     import paycom_census_audit_app
     importlib.reload(paycom_census_audit_app)
     paycom_census_audit_app.render_ui()
+
+elif tool_option == "Paycom Withholding Audit":
+    import withholding_audit_app
+    importlib.reload(withholding_audit_app)
+    withholding_audit_app.render_ui()

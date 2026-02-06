@@ -133,6 +133,33 @@ Single Excel file with **3 Sheets**:
 
 ---
 
+### F. Paycom Withholding Audit (FIT/SIT)
+**Purpose:** Audits Federal and State Income Tax withholding setups between Paycom and Uzio.
+
+**Input File Preparation:**
+You need **3 files** (CSV and Excel):
+1.  **`Paycom Data` (CSV)**: Wide format export from Paycom. Must contain Employee ID and Tax/Status columns.
+2.  **`Uzio Data` (CSV)**: Long format export. Columns: `employee_id`, `withholding_field_key`, `withholding_field_value`.
+3.  **`Mapping Sheet` (Excel)**:
+    *   **Column "Uzio Field Key"**: The key from the Uzio CSV (e.g., `FIT_FILING_STATUS`).
+    *   **Column "PayCom Column"**: The header name in the Paycom CSV.
+
+**Optional Files:**
+*   `key_mapping.yml`: For pretty labels in the UI.
+*   `filing status_code.txt`: For mapping numeric status codes to text labels.
+
+**Understanding the Report:**
+*   **Unique Logic:**
+    *   **Amounts:** Uzio amounts (often cents) are converted to dollars (/100) to match Paycom.
+    *   **Booleans:** Maps "Yes/Y/1" to "True" automatically.
+    *   **Filing Status:** Uses "substring matching" to handle minor differences (e.g., "Single" vs "Single/Married at Single Rate").
+*   **Status Codes:**
+    *   `Data Match`: Logic confirmed match.
+    *   `Data Mismatch`: Real difference.
+    *   `Value missing in...`: One side has data, the other is blank.
+
+---
+
 ## 4. Troubleshooting common issues
 *   **"Missing Tabs" Error:** Check that your Excel sheet names match the requirements exactly.
 *   **"Column Missing" Error:** Ensure the Mapping Sheet refers to exact column headers found in the Data sheets.
