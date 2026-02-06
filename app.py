@@ -2,7 +2,7 @@ import streamlit as st
 import importlib
 
 # Set Page Config (Must be first)
-st.set_page_config(page_title="Audit Hub", layout="wide", page_icon="📊")
+st.set_page_config(page_title="AI Powered Audit Hub", layout="wide", page_icon="🤖")
 
 # Custom CSS for UI enhancements
 st.markdown("""
@@ -72,7 +72,21 @@ st.markdown("""
         margin-top: 0.5rem;
         margin-bottom: 0px;
         border-bottom: 1px solid #4a5568;
-        padding-bottom: 0.1rem;
+    /* AI Title Gradient */
+    .ai-title {
+        background: linear-gradient(90deg, #4b6cb7 0%, #182848 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        font-weight: bold;
+        font-size: 1.8rem;
+        padding-bottom: 10px;
+    }
+    
+    /* Sidebar specific override */
+    [data-testid="stSidebar"] .ai-title {
+        background: linear-gradient(90deg, #00d2ff 0%, #3a7bd5 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -81,7 +95,7 @@ st.markdown("""
 # Sidebar Navigation Grouping
 # ---------------------------------------------------------
 with st.sidebar:
-    st.markdown("## Audit Hub") 
+    st.markdown('<div class="ai-title">AI Powered<br>Audit Hub</div>', unsafe_allow_html=True)
     st.markdown("---")
     
     # 1. Select Provider
