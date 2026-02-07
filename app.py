@@ -78,7 +78,7 @@ st.markdown("""
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         font-weight: bold;
-        font-size: 1.8rem;
+        font-size: 2.4rem;
         padding-bottom: 10px;
     }
     
